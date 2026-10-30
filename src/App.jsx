@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { toast } from 'sonner'
 import {
-  LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
+  Archive, ArchiveRestore, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
 } from 'lucide-react'
 import { supabase } from '@/supabase.js'
 import { brl, cn, quando } from '@/lib/utils'
@@ -82,6 +82,7 @@ function Painel({ sessao }) {
   const [produto, setProduto] = useState(lerProduto)
   const [preco, setPreco] = useState('')
   const [novoAberto, setNovoAberto] = useState(false)
+  const [abaProdutos, setAbaProdutos] = useState('novo')
   const [novo, setNovo] = useState({ nome: '', compra: '', venda: '' })
   const [qtd, setQtd] = useState(1)
   const [salvando, setSalvando] = useState(false)
@@ -106,12 +107,21 @@ function Painel({ sessao }) {
     }
     if (error) { toast.error('Não consegui carregar os produtos.'); return }
     setProdutos(data)
-    setProduto((atual) => (data.some((p) => p.nome === atual) ? atual : data[0]?.nome || ''))
+    setProduto((atual) => {
+      const ativos = data.filter((p) => p.ativo)
+      return ativos.some((p) => p.nome === atual) ? atual : ativos[0]?.nome || ''
+    })
   }, [])
 
   useEffect(() => { carregar(); carregarProdutos() }, [carregar, carregarProdutos])
 
+  const ativos = useMemo(() => produtos.filter((p) => p.ativo), [produtos])
   const info = produtos.find((p) => p.nome === produto)
+  const estoques = useMemo(() => {
+    const e = {}
+    for (const m of todas) e[m.produto] = (e[m.produto] || 0) + (m.tipo === 'compra' ? m.qtd : -m.qtd)
+    return e
+  }, [todas])
   useEffect(() => { setPreco(lerPreco(info)) }, [info])
 
   const movs = useMemo(() => todas.filter((m) => m.produto === produto), [todas, produto])
@@ -189,7 +199,7 @@ function Painel({ sessao }) {
     const num = (v) => (String(v).trim() === '' ? null : parseFloat(String(v).replace(',', '.')))
     const { error } = await supabase.from('estoque_produto').insert({ nome, preco_compra: num(novo.compra), preco_venda: num(novo.venda) })
     if (error) {
-      toast.error(error.code === '23505' ? 'Esse produto já existe.' : 'Não consegui adicionar o produto.')
+      toast.error(error.code === '23505' ? 'Esse produto já existe. Se estiver arquivado, reative em Gerenciar.' : 'Não consegui adicionar o produto.')
       return
     }
     await carregarProdutos()
@@ -197,6 +207,13 @@ function Painel({ sessao }) {
     setNovo({ nome: '', compra: '', venda: '' })
     setNovoAberto(false)
     toast.success(`${nome} adicionado`)
+  }
+
+  async function alternarAtivo(p) {
+    const { error } = await supabase.from('estoque_produto').update({ ativo: !p.ativo }).eq('id', p.id)
+    if (error) { toast.error('Não consegui atualizar o produto.'); return }
+    await carregarProdutos()
+    toast.success(p.ativo ? `${p.nome} arquivado. O histórico foi mantido.` : `${p.nome} reativado`)
   }
 
   function mudarPreco(v) {
@@ -229,18 +246,18 @@ function Painel({ sessao }) {
       <div className="flex items-center gap-2">
         <Tabs value={produto} onValueChange={trocarProduto} className="min-w-0">
           <TabsList className="h-11 max-w-full overflow-x-auto">
-            {produtos.map((p) => (
+            {ativos.map((p) => (
               <TabsTrigger key={p.id} value={p.nome} className="h-9 px-5 text-sm">{p.nome}</TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="outline" size="icon" className="shrink-0" aria-label="Adicionar produto" onClick={() => setNovoAberto(true)}>
+            <Button variant="outline" size="icon" className="shrink-0" aria-label="Adicionar ou gerenciar produtos" onClick={() => setNovoAberto(true)}>
               <PackagePlus />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Adicionar produto</TooltipContent>
+          <TooltipContent>Adicionar ou gerenciar produtos</TooltipContent>
         </Tooltip>
       </div>
 
@@ -353,27 +370,65 @@ function Painel({ sessao }) {
 
       <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
         <DialogContent>
-          <div>
-            <DialogTitle>Novo produto</DialogTitle>
-            <DialogDescription>Só o nome é obrigatório. Os valores são por unidade.</DialogDescription>
+          <div className="grid gap-3">
+            <DialogTitle>Produtos</DialogTitle>
+            <Tabs value={abaProdutos} onValueChange={setAbaProdutos}>
+              <TabsList>
+                <TabsTrigger value="novo">Adicionar</TabsTrigger>
+                <TabsTrigger value="gerenciar">Gerenciar</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
-          <form onSubmit={salvarProduto} className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="n-nome">Nome do produto</Label>
-              <Input id="n-nome" maxLength={40} placeholder="Ex.: Guaraná" value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} required autoFocus />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2">
-                <Label htmlFor="n-compra">Valor de compra (R$)</Label>
-                <Input id="n-compra" type="number" inputMode="decimal" min="0" step="0.01" placeholder="Opcional" value={novo.compra} onChange={(e) => setNovo({ ...novo, compra: e.target.value })} />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="n-venda">Valor de venda (R$)</Label>
-                <Input id="n-venda" type="number" inputMode="decimal" min="0" step="0.01" placeholder="Opcional" value={novo.venda} onChange={(e) => setNovo({ ...novo, venda: e.target.value })} />
-              </div>
-            </div>
-            <Button size="lg">Adicionar produto</Button>
-          </form>
+          {abaProdutos === 'novo' ? (
+            <>
+              <DialogDescription>Só o nome é obrigatório. Os valores são por unidade.</DialogDescription>
+              <form onSubmit={salvarProduto} className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="n-nome">Nome do produto</Label>
+                  <Input id="n-nome" maxLength={40} placeholder="Ex.: Guaraná" value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} required autoFocus />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="n-compra">Valor de compra (R$)</Label>
+                    <Input id="n-compra" type="number" inputMode="decimal" min="0" step="0.01" placeholder="Opcional" value={novo.compra} onChange={(e) => setNovo({ ...novo, compra: e.target.value })} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="n-venda">Valor de venda (R$)</Label>
+                    <Input id="n-venda" type="number" inputMode="decimal" min="0" step="0.01" placeholder="Opcional" value={novo.venda} onChange={(e) => setNovo({ ...novo, venda: e.target.value })} />
+                  </div>
+                </div>
+                <Button size="lg">Adicionar produto</Button>
+              </form>
+            </>
+          ) : (
+            <>
+              <DialogDescription>Arquivar tira o produto das abas, mas mantém o histórico. Dá para reativar depois.</DialogDescription>
+              <ul className="divide-y rounded-lg border">
+                {produtos.map((p) => {
+                  const est = estoques[p.nome] || 0
+                  return (
+                    <li key={p.id} className="flex items-center gap-3 px-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className={cn('truncate text-sm font-semibold', !p.ativo && 'text-muted-foreground line-through')}>{p.nome}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {est} {est === 1 ? 'lata' : 'latas'} em estoque
+                          {p.preco_venda != null && ` · venda ${brl(p.preco_venda)}`}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline" size="sm"
+                        disabled={p.ativo && ativos.length <= 1}
+                        title={p.ativo && ativos.length <= 1 ? 'Precisa sobrar pelo menos um produto' : undefined}
+                        onClick={() => alternarAtivo(p)}
+                      >
+                        {p.ativo ? <><Archive /> Arquivar</> : <><ArchiveRestore /> Reativar</>}
+                      </Button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
