@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
-import { GlassWater, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { supabase } from '@/supabase.js'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -28,9 +28,7 @@ export function Login() {
         <Card className="p-7">
           <form onSubmit={entrar} className="flex flex-col gap-5">
             <div className="flex flex-col items-center gap-3 text-center">
-              <div className="grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
-                <GlassWater className="size-7" />
-              </div>
+              <img src="./box.png" alt="" className="size-20 drop-shadow-lg" />
               <div>
                 <h1 className="text-2xl font-extrabold tracking-tight">Estoque</h1>
                 <p className="text-sm text-muted-foreground">Entre para controlar suas vendas.</p>

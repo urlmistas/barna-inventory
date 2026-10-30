@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { toast } from 'sonner'
 import {
-  GlassWater, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
+  LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
 } from 'lucide-react'
 import { supabase } from '@/supabase.js'
 import { brl, cn, quando } from '@/lib/utils'
@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AnimatedNumber } from '@/components/AnimatedNumber'
-import { SaldoChart } from '@/components/SaldoChart'
+import { GraficoCard } from '@/components/SaldoChart'
 import { Login } from '@/components/Login'
 
 function lerPreco() {
@@ -142,12 +142,10 @@ function Painel({ sessao }) {
   }
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 pb-16 pt-5">
+    <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/30">
-            <GlassWater className="size-5" />
-          </div>
+          <img src="./box.png" alt="" className="size-11 drop-shadow-md" />
           <div className="leading-tight">
             <h1 className="text-lg font-extrabold tracking-tight">Estoque</h1>
             <p className="text-xs text-muted-foreground">Coca-Cola</p>
@@ -158,6 +156,8 @@ function Painel({ sessao }) {
         </Button>
       </header>
 
+      <div className="grid items-start gap-5 lg:grid-cols-12">
+      <div className="flex flex-col gap-5 lg:col-span-5">
       <Card className="overflow-hidden">
         <CardContent className="flex flex-col items-center gap-3 p-6">
           <Anel pct={pct}>
@@ -206,14 +206,9 @@ function Painel({ sessao }) {
           </Button>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Saldo ao longo do tempo</CardTitle>
-          <CardDescription>Recebido menos gasto, a cada lançamento.</CardDescription>
-        </CardHeader>
-        <CardContent><SaldoChart movs={movs} /></CardContent>
-      </Card>
+      </div>
+      <div className="flex flex-col gap-5 lg:col-span-7">
+      <GraficoCard movs={movs} />
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -243,7 +238,7 @@ function Painel({ sessao }) {
                     initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
                     className="flex items-center gap-3 overflow-hidden py-3"
                   >
-                    <div className={cn('grid size-9 shrink-0 place-items-center rounded-full', m.tipo === 'venda' ? 'bg-success/15 text-success' : 'bg-primary/12 text-primary')}>
+                    <div className={cn('grid size-9 shrink-0 place-items-center rounded-full', m.tipo === 'venda' ? 'bg-success/15 text-success' : 'bg-accent text-accent-foreground')}>
                       {m.tipo === 'venda' ? <TrendingUp className="size-4" /> : <PackagePlus className="size-4" />}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -265,6 +260,8 @@ function Painel({ sessao }) {
           )}
         </CardContent>
       </Card>
+      </div>
+      </div>
 
       <Dialog open={compraAberta} onOpenChange={setCompraAberta}>
         <DialogContent>
