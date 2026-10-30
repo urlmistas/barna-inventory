@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { toast } from 'sonner'
 import {
-  Boxes, PiggyBank, ShoppingBag, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
+  Boxes, CreditCard, PiggyBank, QrCode, ShoppingBag, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
 } from 'lucide-react'
 import { avisarEstoque, supabase } from '@/supabase.js'
 import { brl, cn, quando } from '@/lib/utils'
@@ -34,6 +34,20 @@ function lerPreco(info) {
     if (salvo) return Number(salvo)
   } catch { /* sem armazenamento */ }
   return info.preco_venda ?? ''
+}
+
+const FORMAS = [
+  { id: 'pix', nome: 'Pix', Icone: QrCode },
+  { id: 'debito', nome: 'Débito', Icone: CreditCard },
+  { id: 'credito', nome: 'Crédito', Icone: CreditCard },
+]
+const nomeForma = (id) => FORMAS.find((f) => f.id === id)?.nome
+
+function lerForma() {
+  try {
+    const salva = localStorage.getItem('forma')
+    return FORMAS.some((f) => f.id === salva) ? salva : 'pix'
+  } catch { return 'pix' }
 }
 
 const GERAL = '__geral__'
@@ -90,6 +104,7 @@ function Painel({ sessao }) {
   const [abaProdutos, setAbaProdutos] = useState('novo')
   const [novo, setNovo] = useState({ nome: '', compra: '', venda: '' })
   const [qtd, setQtd] = useState(1)
+  const [forma, setForma] = useState(lerForma)
   const [salvando, setSalvando] = useState(false)
   const [filtro, setFiltro] = useState('todos')
   const [compraAberta, setCompraAberta] = useState(false)
@@ -151,6 +166,18 @@ function Painel({ sessao }) {
       }
     })
   }, [todas])
+  const porForma = useMemo(() => {
+    const por = {}
+    for (const m of todas) {
+      if (m.tipo !== 'venda') continue
+      const k = m.forma || 'sem'
+      const d = (por[k] ||= { id: k, vendas: 0, latas: 0, valor: 0 })
+      d.vendas += 1
+      d.latas += m.qtd
+      d.valor += Number(m.valor)
+    }
+    return [...FORMAS.map((f) => f.id), 'sem'].filter((k) => por[k]).map((k) => por[k])
+  }, [todas])
   const ger = useMemo(() => ({
     lucro: porProduto.reduce((t, d) => t + d.lucro, 0),
     parado: porProduto.reduce((t, d) => t + d.parado, 0),
@@ -174,9 +201,9 @@ function Painel({ sessao }) {
   const total = qtdOk * Number(preco || 0)
   const visiveis = movs.filter((m) => filtro === 'todos' || m.tipo === filtro)
 
-  async function registrar(tipo, n, valor) {
+  async function registrar(tipo, n, valor, extra = {}) {
     setSalvando(true)
-    const { error } = await supabase.from('estoque_mov').insert({ produto, tipo, qtd: n, valor })
+    const { error } = await supabase.from('estoque_mov').insert({ produto, tipo, qtd: n, valor, ...extra })
     setSalvando(false)
     if (error) { toast.error('Não consegui salvar. Tente de novo.'); return false }
     await carregar()
@@ -186,10 +213,10 @@ function Painel({ sessao }) {
   async function vender() {
     const antes = r.estoque
     const depois = antes - qtdOk
-    if (await registrar('venda', qtdOk, total)) {
+    if (await registrar('venda', qtdOk, total, { forma })) {
       // avisa uma vez: quando passa a ficar baixo ou quando acaba
       if ((depois <= ESTOQUE_BAIXO && antes > ESTOQUE_BAIXO) || depois === 0) avisarEstoque(produto, depois)
-      mostrarPago('Venda registrada', `${produto} · ${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)}`)
+      mostrarPago('Venda registrada', `${produto} · ${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)} · ${nomeForma(forma)}`)
       setQtd(1)
     }
   }
@@ -215,8 +242,8 @@ function Painel({ sessao }) {
       {
         label: 'Restaurar',
         onClick: async () => {
-          const { id, user_id, criado_em, produto, tipo, qtd: q, valor } = m
-          await supabase.from('estoque_mov').insert({ id, user_id, criado_em, produto, tipo, qtd: q, valor })
+          const { id, user_id, criado_em, produto, tipo, qtd: q, valor, forma } = m
+          await supabase.from('estoque_mov').insert({ id, user_id, criado_em, produto, tipo, qtd: q, valor, forma })
           carregar()
         },
       }
@@ -286,6 +313,11 @@ function Painel({ sessao }) {
   function mudarPreco(v) {
     setPreco(v)
     try { localStorage.setItem('preco:' + produto, String(v)) } catch { /* sem armazenamento */ }
+  }
+
+  function trocarForma(f) {
+    setForma(f)
+    try { localStorage.setItem('forma', f) } catch { /* sem armazenamento */ }
   }
 
   function trocarProduto(nome) {
@@ -390,6 +422,18 @@ function Painel({ sessao }) {
               <Input id="preco" type="number" inputMode="decimal" min="0" step="0.5" value={preco} onChange={(e) => mudarPreco(e.target.value)} />
             </div>
           </div>
+          <div className="grid gap-2">
+            <Label>Pagamento</Label>
+            <Tabs value={forma} onValueChange={trocarForma}>
+              <TabsList className="h-11 w-full">
+                {FORMAS.map(({ id, nome, Icone }) => (
+                  <TabsTrigger key={id} value={id} className="h-9 flex-1 gap-1.5 text-sm">
+                    <Icone className="size-4" /> {nome}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
           <Button size="lg" onClick={vender} disabled={r.estoque < 1 || salvando}>
             {salvando ? <Loader2 className="animate-spin" /> : <ShoppingCart />}
             Vender · {brl(total)}
@@ -442,6 +486,35 @@ function Painel({ sessao }) {
         </Card>
       )}
 
+      {geral && porForma.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Formas de pagamento</CardTitle>
+            <CardDescription>Quanto entrou em cada uma.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y">
+              {porForma.map((d) => {
+                const f = FORMAS.find((x) => x.id === d.id)
+                const Icone = f ? f.Icone : Inbox
+                return (
+                  <li key={d.id} className="flex items-center gap-3 py-3">
+                    <div className="grid size-9 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground">
+                      <Icone className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">{f ? f.nome : 'Sem registro'}</p>
+                      <p className="text-xs text-muted-foreground">{d.vendas} {d.vendas === 1 ? 'venda' : 'vendas'} · {d.latas} {d.latas === 1 ? 'lata' : 'latas'}</p>
+                    </div>
+                    <span className="text-sm font-bold tabular-nums">{brl(d.valor)}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">Histórico</CardTitle>
@@ -477,7 +550,7 @@ function Painel({ sessao }) {
                       <p className="text-sm font-semibold">
                         {m.tipo === 'venda' ? 'Venda' : 'Compra'}{geral && ` · ${m.produto}`} · {m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}
                       </p>
-                      <p className="text-xs text-muted-foreground">{quando(m.criado_em)}</p>
+                      <p className="text-xs text-muted-foreground">{quando(m.criado_em)}{m.forma && ` · ${nomeForma(m.forma)}`}</p>
                     </div>
                     <span className={cn('text-sm font-bold tabular-nums', m.tipo === 'venda' ? 'text-success' : 'text-foreground')}>
                       {m.tipo === 'venda' ? '+' : '−'}{brl(m.valor)}
