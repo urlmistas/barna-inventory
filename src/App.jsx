@@ -13,27 +13,29 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { AnimatedNumber } from '@/components/AnimatedNumber'
 import { GraficoCard } from '@/components/SaldoChart'
 import { Login } from '@/components/Login'
 import { mostrarApagado, mostrarPago } from '@/components/PagoToast'
 
-// nomes iguais aos gravados na coluna `produto` do banco
-const PRODUTOS = [
-  { nome: 'Coca-Cola', preco: 6, compra: { qtd: '6', total: '22' } },
-  { nome: 'Monster', preco: 12, compra: { qtd: '6', total: '60' } },
+// produtos que entram na primeira vez que a conta abre o site (depois ficam no banco)
+const PRODUTOS_INICIAIS = [
+  { nome: 'Coca-Cola', preco_venda: 6, preco_compra: null },
+  { nome: 'Monster', preco_venda: 12, preco_compra: 10 },
 ]
-const infoProduto = (nome) => PRODUTOS.find((p) => p.nome === nome)
 
-function lerPreco(nome) {
-  try { return Number(localStorage.getItem('preco:' + nome)) || infoProduto(nome).preco } catch { return infoProduto(nome).preco }
+function lerPreco(info) {
+  if (!info) return ''
+  try {
+    const salvo = localStorage.getItem('preco:' + info.nome)
+    if (salvo) return Number(salvo)
+  } catch { /* sem armazenamento */ }
+  return info.preco_venda ?? ''
 }
 
 function lerProduto() {
-  try {
-    const salvo = localStorage.getItem('produto')
-    return infoProduto(salvo) ? salvo : PRODUTOS[0].nome
-  } catch { return PRODUTOS[0].nome }
+  try { return localStorage.getItem('produto') || '' } catch { return '' }
 }
 
 function Anel({ pct, children }) {
@@ -76,13 +78,16 @@ function Stat({ icon: Icon, rotulo, valor, tom }) {
 function Painel({ sessao }) {
   const [todas, setTodas] = useState([])
   const [carregando, setCarregando] = useState(true)
+  const [produtos, setProdutos] = useState([])
   const [produto, setProduto] = useState(lerProduto)
-  const [preco, setPreco] = useState(() => lerPreco(lerProduto()))
+  const [preco, setPreco] = useState('')
+  const [novoAberto, setNovoAberto] = useState(false)
+  const [novo, setNovo] = useState({ nome: '', compra: '', venda: '' })
   const [qtd, setQtd] = useState(1)
   const [salvando, setSalvando] = useState(false)
   const [filtro, setFiltro] = useState('todos')
   const [compraAberta, setCompraAberta] = useState(false)
-  const [compra, setCompra] = useState(() => infoProduto(lerProduto()).compra)
+  const [compra, setCompra] = useState({ qtd: '6', total: '' })
 
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
@@ -92,7 +97,22 @@ function Painel({ sessao }) {
     setCarregando(false)
   }, [])
 
-  useEffect(() => { carregar() }, [carregar])
+  const carregarProdutos = useCallback(async () => {
+    const ler = () => supabase.from('estoque_produto').select('*').order('criado_em', { ascending: true })
+    let { data, error } = await ler()
+    if (!error && data.length === 0) {
+      await supabase.from('estoque_produto').insert(PRODUTOS_INICIAIS)
+      ;({ data, error } = await ler())
+    }
+    if (error) { toast.error('Não consegui carregar os produtos.'); return }
+    setProdutos(data)
+    setProduto((atual) => (data.some((p) => p.nome === atual) ? atual : data[0]?.nome || ''))
+  }, [])
+
+  useEffect(() => { carregar(); carregarProdutos() }, [carregar, carregarProdutos])
+
+  const info = produtos.find((p) => p.nome === produto)
+  useEffect(() => { setPreco(lerPreco(info)) }, [info])
 
   const movs = useMemo(() => todas.filter((m) => m.produto === produto), [todas, produto])
 
@@ -156,6 +176,29 @@ function Painel({ sessao }) {
     )
   }
 
+  function abrirCompra() {
+    const un = info?.preco_compra
+    setCompra({ qtd: '6', total: un ? String(Math.round(6 * un * 100) / 100) : '' })
+    setCompraAberta(true)
+  }
+
+  async function salvarProduto(e) {
+    e.preventDefault()
+    const nome = novo.nome.trim()
+    if (!nome) return
+    const num = (v) => (String(v).trim() === '' ? null : parseFloat(String(v).replace(',', '.')))
+    const { error } = await supabase.from('estoque_produto').insert({ nome, preco_compra: num(novo.compra), preco_venda: num(novo.venda) })
+    if (error) {
+      toast.error(error.code === '23505' ? 'Esse produto já existe.' : 'Não consegui adicionar o produto.')
+      return
+    }
+    await carregarProdutos()
+    trocarProduto(nome)
+    setNovo({ nome: '', compra: '', venda: '' })
+    setNovoAberto(false)
+    toast.success(`${nome} adicionado`)
+  }
+
   function mudarPreco(v) {
     setPreco(v)
     try { localStorage.setItem('preco:' + produto, String(v)) } catch { /* sem armazenamento */ }
@@ -163,8 +206,6 @@ function Painel({ sessao }) {
 
   function trocarProduto(nome) {
     setProduto(nome)
-    setPreco(lerPreco(nome))
-    setCompra(infoProduto(nome).compra)
     setQtd(1)
     setFiltro('todos')
     try { localStorage.setItem('produto', nome) } catch { /* sem armazenamento */ }
@@ -185,13 +226,23 @@ function Painel({ sessao }) {
         </Button>
       </header>
 
-      <Tabs value={produto} onValueChange={trocarProduto}>
-        <TabsList className="h-11 w-full sm:w-auto">
-          {PRODUTOS.map((p) => (
-            <TabsTrigger key={p.nome} value={p.nome} className="h-9 flex-1 px-6 text-sm sm:flex-none">{p.nome}</TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <div className="flex items-center gap-2">
+        <Tabs value={produto} onValueChange={trocarProduto} className="min-w-0">
+          <TabsList className="h-11 max-w-full overflow-x-auto">
+            {produtos.map((p) => (
+              <TabsTrigger key={p.id} value={p.nome} className="h-9 px-5 text-sm">{p.nome}</TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="outline" size="icon" className="shrink-0" aria-label="Adicionar produto" onClick={() => setNovoAberto(true)}>
+              <PackagePlus />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Adicionar produto</TooltipContent>
+        </Tooltip>
+      </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-12">
       <div className="flex flex-col gap-5 lg:col-span-5">
@@ -238,7 +289,7 @@ function Painel({ sessao }) {
             Vender · {brl(total)}
           </Button>
           {r.estoque < 1 && !carregando && <p className="text-center text-sm text-muted-foreground">Sem estoque. Registre uma compra.</p>}
-          <Button variant="secondary" onClick={() => setCompraAberta(true)}>
+          <Button variant="secondary" onClick={abrirCompra}>
             <PackagePlus /> Registrar compra
           </Button>
         </CardContent>
@@ -299,6 +350,32 @@ function Painel({ sessao }) {
       </Card>
       </div>
       </div>
+
+      <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
+        <DialogContent>
+          <div>
+            <DialogTitle>Novo produto</DialogTitle>
+            <DialogDescription>Só o nome é obrigatório. Os valores são por unidade.</DialogDescription>
+          </div>
+          <form onSubmit={salvarProduto} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="n-nome">Nome do produto</Label>
+              <Input id="n-nome" maxLength={40} placeholder="Ex.: Guaraná" value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} required autoFocus />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2">
+                <Label htmlFor="n-compra">Valor de compra (R$)</Label>
+                <Input id="n-compra" type="number" inputMode="decimal" min="0" step="0.01" placeholder="Opcional" value={novo.compra} onChange={(e) => setNovo({ ...novo, compra: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="n-venda">Valor de venda (R$)</Label>
+                <Input id="n-venda" type="number" inputMode="decimal" min="0" step="0.01" placeholder="Opcional" value={novo.venda} onChange={(e) => setNovo({ ...novo, venda: e.target.value })} />
+              </div>
+            </div>
+            <Button size="lg">Adicionar produto</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={compraAberta} onOpenChange={setCompraAberta}>
         <DialogContent>
