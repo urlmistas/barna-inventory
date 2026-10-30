@@ -246,7 +246,7 @@ function Painel({ sessao }) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold">
-                        {m.tipo === 'venda' ? 'Venda' : 'Compra'} · {m.tipo === 'venda' ? '−' : '+'}{m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}
+                        {m.tipo === 'venda' ? 'Venda' : 'Compra'} · {m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}
                       </p>
                       <p className="text-xs text-muted-foreground">{quando(m.criado_em)}</p>
                     </div>
