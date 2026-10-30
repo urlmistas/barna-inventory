@@ -11,6 +11,7 @@ const variants = cva(
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/70 border',
         outline: 'border bg-card hover:bg-accent hover:text-accent-foreground',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
+        destructive: 'bg-destructive text-white shadow-sm hover:brightness-110',
       },
       size: {
         default: 'h-10 px-4',

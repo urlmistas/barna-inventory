@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { toast } from 'sonner'
 import {
-  Archive, ArchiveRestore, Boxes, PiggyBank, ShoppingBag, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
+  Boxes, PiggyBank, ShoppingBag, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
 } from 'lucide-react'
-import { supabase } from '@/supabase.js'
+import { avisarEstoque, supabase } from '@/supabase.js'
 import { brl, cn, quando } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { AnimatedNumber } from '@/components/AnimatedNumber'
 import { AutoHeight } from '@/components/AutoHeight'
+import { ProdutoLinha } from '@/components/ProdutoLinha'
 import { GraficoCard } from '@/components/SaldoChart'
 import { Login } from '@/components/Login'
 import { mostrarApagado, mostrarPago } from '@/components/PagoToast'
@@ -183,7 +184,11 @@ function Painel({ sessao }) {
   }
 
   async function vender() {
+    const antes = r.estoque
+    const depois = antes - qtdOk
     if (await registrar('venda', qtdOk, total)) {
+      // avisa uma vez: quando passa a ficar baixo ou quando acaba
+      if ((depois <= ESTOQUE_BAIXO && antes > ESTOQUE_BAIXO) || depois === 0) avisarEstoque(produto, depois)
       mostrarPago('Venda registrada', `${produto} · ${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)}`)
       setQtd(1)
     }
@@ -246,6 +251,36 @@ function Painel({ sessao }) {
     if (error) { toast.error('Não consegui atualizar o produto.'); return }
     await carregarProdutos()
     toast.success(p.ativo ? `${p.nome} arquivado. O histórico foi mantido.` : `${p.nome} reativado`)
+  }
+
+  async function salvarEdicao(p, f) {
+    const nome = f.nome.trim()
+    if (!nome) return false
+    const num = (v) => (String(v).trim() === '' ? null : parseFloat(String(v).replace(',', '.')))
+    const { error } = await supabase.from('estoque_produto').update({ preco_compra: num(f.compra), preco_venda: num(f.venda) }).eq('id', p.id)
+    if (error) { toast.error('Não consegui salvar os valores.'); return false }
+    if (nome !== p.nome) {
+      const { error: e2 } = await supabase.rpc('estoque_renomear', { antigo: p.nome, novo: nome })
+      if (e2) { toast.error(e2.code === '23505' ? 'Já existe um produto com esse nome.' : 'Não consegui trocar o nome.'); return false }
+    }
+    try {
+      // o preço de venda editado vale de novo (tira o valor lembrado no aparelho)
+      localStorage.removeItem('preco:' + p.nome)
+      localStorage.removeItem('preco:' + nome)
+    } catch { /* sem armazenamento */ }
+    if (produto === p.nome && nome !== p.nome) trocarProduto(nome)
+    await Promise.all([carregarProdutos(), carregar()])
+    setPreco(lerPreco({ ...p, nome, preco_venda: num(f.venda) }))
+    toast.success(`${nome} atualizado`)
+    return true
+  }
+
+  async function apagarProduto(p) {
+    const { error } = await supabase.rpc('estoque_apagar_produto', { alvo: p.nome })
+    if (error) { toast.error('Não consegui apagar o produto.'); return }
+    try { localStorage.removeItem('preco:' + p.nome) } catch { /* sem armazenamento */ }
+    await Promise.all([carregarProdutos(), carregar()])
+    toast.success(`${p.nome} apagado`)
   }
 
   function mudarPreco(v) {
@@ -501,29 +536,19 @@ function Painel({ sessao }) {
           ) : (
             <>
               <DialogDescription>Arquivar tira o produto das abas, mas mantém o histórico. Dá para reativar depois.</DialogDescription>
-              <ul className="divide-y rounded-lg border">
-                {produtos.map((p) => {
-                  const est = estoques[p.nome] || 0
-                  return (
-                    <li key={p.id} className="flex items-center gap-3 px-3 py-2.5">
-                      <div className="min-w-0 flex-1">
-                        <p className={cn('truncate text-sm font-semibold', !p.ativo && 'text-muted-foreground line-through')}>{p.nome}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {est} {est === 1 ? 'lata' : 'latas'} em estoque
-                          {p.preco_venda != null && ` · venda ${brl(p.preco_venda)}`}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline" size="sm"
-                        disabled={p.ativo && ativos.length <= 1}
-                        title={p.ativo && ativos.length <= 1 ? 'Precisa sobrar pelo menos um produto' : undefined}
-                        onClick={() => alternarAtivo(p)}
-                      >
-                        {p.ativo ? <><Archive /> Arquivar</> : <><ArchiveRestore /> Reativar</>}
-                      </Button>
-                    </li>
-                  )
-                })}
+              <ul className="divide-y overflow-hidden rounded-lg border">
+                {produtos.map((p) => (
+                  <ProdutoLinha
+                    key={p.id} p={p}
+                    estoque={estoques[p.nome] || 0}
+                    lancamentos={todas.filter((m) => m.produto === p.nome).length}
+                    ultimoAtivo={ativos.length <= 1}
+                    unico={produtos.length <= 1}
+                    onSalvar={salvarEdicao}
+                    onAlternar={alternarAtivo}
+                    onApagar={apagarProduto}
+                  />
+                ))}
               </ul>
             </>
           )}
