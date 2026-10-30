@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AnimatedNumber } from '@/components/AnimatedNumber'
 import { GraficoCard } from '@/components/SaldoChart'
 import { Login } from '@/components/Login'
+import { mostrarPago } from '@/components/PagoToast'
 
 function lerPreco() {
   try { return Number(localStorage.getItem('preco')) || 6 } catch { return 6 }
@@ -104,7 +105,7 @@ function Painel({ sessao }) {
 
   async function vender() {
     if (await registrar('venda', qtdOk, total)) {
-      toast.success(`Venda registrada: ${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)}`)
+      mostrarPago('Pago!', `${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)}`)
       setQtd(1)
     }
   }
