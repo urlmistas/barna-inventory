@@ -379,6 +379,12 @@ function Painel({ sessao }) {
               </TabsList>
             </Tabs>
           </div>
+          <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={abaProdutos} className="grid gap-4"
+            initial={{ opacity: 0, x: abaProdutos === 'novo' ? -14 : 14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
           {abaProdutos === 'novo' ? (
             <>
               <DialogDescription>Só o nome é obrigatório. Os valores são por unidade.</DialogDescription>
@@ -429,6 +435,8 @@ function Painel({ sessao }) {
               </ul>
             </>
           )}
+          </motion.div>
+          </AnimatePresence>
         </DialogContent>
       </Dialog>
 

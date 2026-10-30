@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import {
   Area, AreaChart, Bar, BarChart, Brush, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
@@ -131,7 +132,15 @@ export function GraficoCard({ movs }) {
       </CardHeader>
       <CardContent>
         <div className="h-56 w-full lg:h-72">
-          {aba === 'saldo' ? <Saldo movs={movs} /> : <VendasPorDia movs={movs} />}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={aba} className="h-full w-full"
+              initial={{ opacity: 0, x: aba === 'saldo' ? -16 : 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              {aba === 'saldo' ? <Saldo movs={movs} /> : <VendasPorDia movs={movs} />}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </CardContent>
     </Card>

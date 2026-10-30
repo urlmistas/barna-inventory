@@ -5,7 +5,7 @@ export const TooltipProvider = T.Provider
 export const Tooltip = T.Root
 export const TooltipTrigger = T.Trigger
 
-export const TooltipContent = ({ className, sideOffset = 6, ...p }) => (
+export const TooltipContent = ({ className, sideOffset = 6, children, ...p }) => (
   <T.Portal>
     <T.Content
       sideOffset={sideOffset}
@@ -14,6 +14,9 @@ export const TooltipContent = ({ className, sideOffset = 6, ...p }) => (
         className
       )}
       {...p}
-    />
+    >
+      {children}
+      <T.Arrow className="fill-foreground" />
+    </T.Content>
   </T.Portal>
 )
