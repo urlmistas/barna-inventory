@@ -18,8 +18,22 @@ import { GraficoCard } from '@/components/SaldoChart'
 import { Login } from '@/components/Login'
 import { mostrarApagado, mostrarPago } from '@/components/PagoToast'
 
-function lerPreco() {
-  try { return Number(localStorage.getItem('preco')) || 6 } catch { return 6 }
+// nomes iguais aos gravados na coluna `produto` do banco
+const PRODUTOS = [
+  { nome: 'Coca-Cola', preco: 6, compra: { qtd: '6', total: '22' } },
+  { nome: 'Monster', preco: 12, compra: { qtd: '6', total: '60' } },
+]
+const infoProduto = (nome) => PRODUTOS.find((p) => p.nome === nome)
+
+function lerPreco(nome) {
+  try { return Number(localStorage.getItem('preco:' + nome)) || infoProduto(nome).preco } catch { return infoProduto(nome).preco }
+}
+
+function lerProduto() {
+  try {
+    const salvo = localStorage.getItem('produto')
+    return infoProduto(salvo) ? salvo : PRODUTOS[0].nome
+  } catch { return PRODUTOS[0].nome }
 }
 
 function Anel({ pct, children }) {
@@ -60,24 +74,27 @@ function Stat({ icon: Icon, rotulo, valor, tom }) {
 }
 
 function Painel({ sessao }) {
-  const [movs, setMovs] = useState([])
+  const [todas, setTodas] = useState([])
   const [carregando, setCarregando] = useState(true)
-  const [preco, setPreco] = useState(lerPreco)
+  const [produto, setProduto] = useState(lerProduto)
+  const [preco, setPreco] = useState(() => lerPreco(lerProduto()))
   const [qtd, setQtd] = useState(1)
   const [salvando, setSalvando] = useState(false)
   const [filtro, setFiltro] = useState('todos')
   const [compraAberta, setCompraAberta] = useState(false)
-  const [compra, setCompra] = useState({ qtd: '6', total: '22' })
+  const [compra, setCompra] = useState(() => infoProduto(lerProduto()).compra)
 
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
       .from('estoque_mov').select('*').order('criado_em', { ascending: false })
     if (error) toast.error('Não consegui carregar os dados.')
-    else setMovs(data)
+    else setTodas(data)
     setCarregando(false)
   }, [])
 
   useEffect(() => { carregar() }, [carregar])
+
+  const movs = useMemo(() => todas.filter((m) => m.produto === produto), [todas, produto])
 
   const r = useMemo(() => {
     const soma = (tipo, campo) =>
@@ -96,7 +113,7 @@ function Painel({ sessao }) {
 
   async function registrar(tipo, n, valor) {
     setSalvando(true)
-    const { error } = await supabase.from('estoque_mov').insert({ tipo, qtd: n, valor })
+    const { error } = await supabase.from('estoque_mov').insert({ produto, tipo, qtd: n, valor })
     setSalvando(false)
     if (error) { toast.error('Não consegui salvar. Tente de novo.'); return false }
     await carregar()
@@ -105,7 +122,7 @@ function Painel({ sessao }) {
 
   async function vender() {
     if (await registrar('venda', qtdOk, total)) {
-      mostrarPago('Venda registrada', `${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)}`)
+      mostrarPago('Venda registrada', `${produto} · ${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)}`)
       setQtd(1)
     }
   }
@@ -116,7 +133,7 @@ function Painel({ sessao }) {
     const valor = parseFloat(String(compra.total).replace(',', '.'))
     if (!(n > 0) || !(valor >= 0)) return
     if (await registrar('compra', n, valor)) {
-      toast.success(`Compra registrada: +${n} latas`)
+      toast.success(`Compra registrada: ${produto}, +${n} latas`)
       setCompraAberta(false)
     }
   }
@@ -127,7 +144,7 @@ function Painel({ sessao }) {
     await carregar()
     mostrarApagado(
       m.tipo === 'venda' ? 'Venda desfeita' : 'Compra desfeita',
-      `${m.qtd} ${m.qtd === 1 ? 'lata' : 'latas'} · ${brl(m.valor)}`,
+      `${m.produto} · ${m.qtd} ${m.qtd === 1 ? 'lata' : 'latas'} · ${brl(m.valor)}`,
       {
         label: 'Restaurar',
         onClick: async () => {
@@ -141,7 +158,16 @@ function Painel({ sessao }) {
 
   function mudarPreco(v) {
     setPreco(v)
-    try { localStorage.setItem('preco', String(v)) } catch { /* sem armazenamento */ }
+    try { localStorage.setItem('preco:' + produto, String(v)) } catch { /* sem armazenamento */ }
+  }
+
+  function trocarProduto(nome) {
+    setProduto(nome)
+    setPreco(lerPreco(nome))
+    setCompra(infoProduto(nome).compra)
+    setQtd(1)
+    setFiltro('todos')
+    try { localStorage.setItem('produto', nome) } catch { /* sem armazenamento */ }
   }
 
   return (
@@ -151,13 +177,21 @@ function Painel({ sessao }) {
           <img src="./box.png" alt="" className="size-11 drop-shadow-md" />
           <div className="leading-tight">
             <h1 className="text-lg font-extrabold tracking-tight">Estoque</h1>
-            <p className="text-xs text-muted-foreground">Coca-Cola</p>
+            <p className="text-xs text-muted-foreground">{produto}</p>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} title={sessao.user.email}>
           <LogOut /> Sair
         </Button>
       </header>
+
+      <Tabs value={produto} onValueChange={trocarProduto}>
+        <TabsList className="h-11 w-full sm:w-auto">
+          {PRODUTOS.map((p) => (
+            <TabsTrigger key={p.nome} value={p.nome} className="h-9 flex-1 px-6 text-sm sm:flex-none">{p.nome}</TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <div className="grid items-start gap-5 lg:grid-cols-12">
       <div className="flex flex-col gap-5 lg:col-span-5">
