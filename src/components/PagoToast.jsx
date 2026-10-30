@@ -1,10 +1,15 @@
 import { motion } from 'motion/react'
 import { toast } from 'sonner'
-import { CircleCheck } from 'lucide-react'
+import { CircleCheck, Trash2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
-const DURACAO = 4000
+const TONS = {
+  pago: { Icone: CircleCheck, icone: 'bg-primary/15 text-primary', barra: 'bg-primary' },
+  apagado: { Icone: Trash2, icone: 'bg-destructive/15 text-destructive', barra: 'bg-destructive' },
+}
 
-function Pago({ titulo, detalhe, id }) {
+function Aviso({ id, tom, titulo, detalhe, acao, duracao }) {
+  const { Icone, icone, barra } = TONS[tom]
   return (
     <motion.div
       initial={{ opacity: 0, y: -16, scale: 0.96 }}
@@ -18,24 +23,35 @@ function Pago({ titulo, detalhe, id }) {
           initial={{ scale: 0, rotate: -90 }}
           animate={{ scale: 1, rotate: 0 }}
           transition={{ type: 'spring', stiffness: 380, damping: 14, delay: 0.1 }}
-          className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/15 text-primary"
+          className={cn('grid size-9 shrink-0 place-items-center rounded-full', icone)}
         >
-          <CircleCheck className="size-5" />
+          <Icone className="size-5" />
         </motion.span>
-        <div className="leading-tight">
+        <div className="min-w-0 flex-1 leading-tight">
           <p className="text-sm font-bold">{titulo}</p>
           {detalhe && <p className="mt-0.5 text-xs text-muted-foreground">{detalhe}</p>}
         </div>
+        {acao && (
+          <button
+            className="shrink-0 cursor-pointer rounded-lg px-3 py-1.5 text-xs font-bold text-accent-foreground transition-colors hover:bg-accent"
+            onClick={(e) => { e.stopPropagation(); acao.onClick(); toast.dismiss(id) }}
+          >
+            {acao.label}
+          </button>
+        )}
       </div>
       <motion.div
-        className="absolute inset-x-0 bottom-0 h-1 origin-left bg-primary"
+        className={cn('absolute inset-x-0 bottom-0 h-1 origin-left', barra)}
         initial={{ scaleX: 1 }}
         animate={{ scaleX: 0 }}
-        transition={{ duration: DURACAO / 1000, ease: 'linear' }}
+        transition={{ duration: duracao / 1000, ease: 'linear' }}
       />
     </motion.div>
   )
 }
 
-export const mostrarPago = (titulo, detalhe) =>
-  toast.custom((id) => <Pago id={id} titulo={titulo} detalhe={detalhe} />, { duration: DURACAO })
+const mostrar = (tom, titulo, detalhe, { acao, duracao = 4000 } = {}) =>
+  toast.custom((id) => <Aviso id={id} tom={tom} titulo={titulo} detalhe={detalhe} acao={acao} duracao={duracao} />, { duration: duracao })
+
+export const mostrarPago = (titulo, detalhe) => mostrar('pago', titulo, detalhe)
+export const mostrarApagado = (titulo, detalhe, acao) => mostrar('apagado', titulo, detalhe, { acao, duracao: 6000 })
