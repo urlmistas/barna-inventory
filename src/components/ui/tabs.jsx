@@ -15,7 +15,7 @@ export function Tabs({ value, ...p }) {
 }
 
 export const TabsList = ({ className, ...p }) => (
-  <T.List className={cn('inline-flex h-9 items-center rounded-lg bg-muted p-1', className)} {...p} />
+  <T.List className={cn('inline-flex h-9 items-center rounded-lg bg-muted p-1 outline-none [scrollbar-width:none]', className)} {...p} />
 )
 
 // o fundo da aba ativa desliza de uma aba para a outra (layoutId compartilhado)
@@ -25,7 +25,7 @@ export function TabsTrigger({ className, children, value, ...p }) {
     <T.Trigger
       value={value}
       className={cn(
-        'relative inline-flex h-7 cursor-pointer items-center justify-center rounded-md px-3 text-xs font-semibold text-muted-foreground transition-colors data-[state=active]:text-foreground',
+        'relative inline-flex h-7 cursor-pointer outline-none items-center justify-center rounded-md px-3 text-xs font-semibold text-muted-foreground transition-colors data-[state=active]:text-foreground',
         className
       )}
       {...p}

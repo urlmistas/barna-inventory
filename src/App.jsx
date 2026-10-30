@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { toast } from 'sonner'
 import {
-  Archive, ArchiveRestore, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
+  Archive, ArchiveRestore, Boxes, PiggyBank, ShoppingBag, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
 } from 'lucide-react'
 import { supabase } from '@/supabase.js'
 import { brl, cn, quando } from '@/lib/utils'
@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { AnimatedNumber } from '@/components/AnimatedNumber'
+import { AutoHeight } from '@/components/AutoHeight'
 import { GraficoCard } from '@/components/SaldoChart'
 import { Login } from '@/components/Login'
 import { mostrarApagado, mostrarPago } from '@/components/PagoToast'
@@ -62,7 +63,7 @@ function Anel({ pct, children }) {
   )
 }
 
-function Stat({ icon: Icon, rotulo, valor, tom }) {
+function Stat({ icon: Icon, rotulo, valor, tom, formato = brl }) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-2 p-4">
@@ -71,7 +72,7 @@ function Stat({ icon: Icon, rotulo, valor, tom }) {
           <Icon className={cn('size-4', tom)} />
         </div>
         <strong className={cn('text-lg font-bold tabular-nums tracking-tight sm:text-xl', tom)}>
-          <AnimatedNumber value={valor} format={brl} />
+          <AnimatedNumber value={valor} format={formato} />
         </strong>
       </CardContent>
     </Card>
@@ -134,12 +135,25 @@ function Painel({ sessao }) {
   const porProduto = useMemo(() => {
     const por = {}
     for (const m of todas) {
-      const d = (por[m.produto] ||= { nome: m.produto, estoque: 0, vendido: 0, custo: 0, receita: 0 })
-      if (m.tipo === 'compra') { d.estoque += m.qtd; d.custo += Number(m.valor) }
+      const d = (por[m.produto] ||= { nome: m.produto, comprado: 0, estoque: 0, vendido: 0, custo: 0, receita: 0 })
+      if (m.tipo === 'compra') { d.comprado += m.qtd; d.estoque += m.qtd; d.custo += Number(m.valor) }
       else { d.estoque -= m.qtd; d.vendido += m.qtd; d.receita += Number(m.valor) }
     }
-    return Object.values(por)
+    return Object.values(por).map((d) => {
+      const custoUn = d.comprado ? d.custo / d.comprado : 0
+      return {
+        ...d,
+        custoUn,
+        precoMedio: d.vendido ? d.receita / d.vendido : 0,
+        lucro: d.receita - d.vendido * custoUn,
+        parado: Math.max(d.estoque, 0) * custoUn,
+      }
+    })
   }, [todas])
+  const ger = useMemo(() => ({
+    lucro: porProduto.reduce((t, d) => t + d.lucro, 0),
+    parado: porProduto.reduce((t, d) => t + d.parado, 0),
+  }), [porProduto])
   useEffect(() => { setPreco(lerPreco(info)) }, [info])
 
   const movs = useMemo(() => (geral ? todas : todas.filter((m) => m.produto === produto)), [todas, produto, geral])
@@ -303,39 +317,24 @@ function Painel({ sessao }) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-3 gap-3">
-        <Stat icon={TrendingDown} rotulo="Gastei" valor={r.custo} />
-        <Stat icon={TrendingUp} rotulo="Recebi" valor={r.receita} tom="text-success" />
-        <Stat icon={Wallet} rotulo="Saldo" valor={r.saldo} tom={r.saldo >= 0 ? 'text-success' : 'text-destructive'} />
-      </div>
-
       {geral ? (
-      <Card>
-        <CardHeader>
-          <CardTitle>Por produto</CardTitle>
-          <CardDescription>Escolha um produto acima para vender ou comprar.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="divide-y">
-            {porProduto.map((d) => (
-              <li key={d.nome} className="flex items-center gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-2 text-sm font-semibold">
-                    {d.nome}
-                    {baixo(d.nome) && <Badge variant="danger">Baixo</Badge>}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{d.estoque} em estoque · {d.vendido} vendidas</p>
-                </div>
-                <span className={cn('text-sm font-bold tabular-nums', d.receita - d.custo >= 0 ? 'text-success' : 'text-destructive')}>
-                  {brl(d.receita - d.custo)}
-                </span>
-              </li>
-            ))}
-            {porProduto.length === 0 && <li className="py-6 text-center text-sm text-muted-foreground">Nada registrado ainda.</li>}
-          </ul>
-        </CardContent>
-      </Card>
+        <div className="grid grid-cols-2 gap-3">
+          <Stat icon={TrendingUp} rotulo="Recebi" valor={r.receita} tom="text-success" />
+          <Stat icon={TrendingDown} rotulo="Gastei" valor={r.custo} />
+          <Stat icon={Wallet} rotulo="Saldo" valor={r.saldo} tom={r.saldo >= 0 ? 'text-success' : 'text-destructive'} />
+          <Stat icon={PiggyBank} rotulo="Lucro das vendas" valor={ger.lucro} tom={ger.lucro >= 0 ? 'text-success' : 'text-destructive'} />
+          <Stat icon={ShoppingBag} rotulo="Latas vendidas" valor={r.vendido} formato={(v) => String(Math.round(v))} />
+          <Stat icon={Boxes} rotulo="Parado no estoque" valor={ger.parado} />
+        </div>
       ) : (
+        <div className="grid grid-cols-3 gap-3">
+          <Stat icon={TrendingDown} rotulo="Gastei" valor={r.custo} />
+          <Stat icon={TrendingUp} rotulo="Recebi" valor={r.receita} tom="text-success" />
+          <Stat icon={Wallet} rotulo="Saldo" valor={r.saldo} tom={r.saldo >= 0 ? 'text-success' : 'text-destructive'} />
+        </div>
+      )}
+
+      {!geral && (
       <Card>
         <CardHeader>
           <CardTitle>Nova venda</CardTitle>
@@ -369,7 +368,44 @@ function Painel({ sessao }) {
       )}
       </div>
       <div className="flex flex-col gap-5 lg:col-span-7">
-      <GraficoCard movs={movs} />
+      <GraficoCard movs={movs} geral={geral} />
+
+      {geral && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Por produto</CardTitle>
+            <CardDescription>Toque numa aba acima para vender ou comprar.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y">
+              {porProduto.map((d) => (
+                <li key={d.nome} className="grid gap-2 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <p className="flex-1 text-sm font-semibold">{d.nome}</p>
+                    {baixo(d.nome) && <Badge variant="danger">Baixo</Badge>}
+                    <span className={cn('text-sm font-bold tabular-nums', d.lucro >= 0 ? 'text-success' : 'text-destructive')}>
+                      {brl(d.lucro)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                    <motion.div
+                      className="h-full rounded-full bg-primary"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${d.comprado ? (d.vendido / d.comprado) * 100 : 0}%` }}
+                      transition={{ duration: 0.6, ease: 'easeOut' }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {d.vendido} de {d.comprado} vendidas · {d.estoque} em estoque
+                    {d.vendido > 0 && ` · custo ${brl(d.custoUn)} → venda ${brl(d.precoMedio)}`}
+                  </p>
+                </li>
+              ))}
+              {porProduto.length === 0 && <li className="py-6 text-center text-sm text-muted-foreground">Nada registrado ainda.</li>}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -383,6 +419,7 @@ function Painel({ sessao }) {
           </Tabs>
         </CardHeader>
         <CardContent>
+          <AutoHeight>
           {carregando ? (
             <div className="flex justify-center py-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
           ) : visiveis.length === 0 ? (
@@ -392,12 +429,11 @@ function Painel({ sessao }) {
             </div>
           ) : (
             <ul className="divide-y">
-              <AnimatePresence initial={false}>
                 {visiveis.map((m) => (
                   <motion.li
-                    key={m.id} layout
-                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                    className="flex items-center gap-3 overflow-hidden py-3"
+                    key={m.id}
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}
+                    className="flex items-center gap-3 py-3"
                   >
                     <div className={cn('grid size-9 shrink-0 place-items-center rounded-full', m.tipo === 'venda' ? 'bg-success/15 text-success' : 'bg-accent text-accent-foreground')}>
                       {m.tipo === 'venda' ? <TrendingUp className="size-4" /> : <PackagePlus className="size-4" />}
@@ -416,9 +452,9 @@ function Painel({ sessao }) {
                     </Button>
                   </motion.li>
                 ))}
-              </AnimatePresence>
             </ul>
           )}
+          </AutoHeight>
         </CardContent>
       </Card>
       </div>

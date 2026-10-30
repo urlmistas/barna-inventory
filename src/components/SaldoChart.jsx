@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  Area, AreaChart, Bar, BarChart, Brush, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, Brush, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { brl } from '@/lib/utils'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,6 +10,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 const dia = (iso) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 const hora = (iso) =>
   new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+
+const CORES = ['var(--primary)', '#6366f1', '#10b981', '#ec4899', '#06b6d4', '#8b5cf6']
 
 const eixo = { stroke: 'var(--muted-foreground)', fontSize: 11, tickLine: false, axisLine: false }
 
@@ -76,21 +78,28 @@ function Saldo({ movs }) {
   )
 }
 
-function VendasPorDia({ movs }) {
-  const dados = useMemo(() => {
+function VendasPorDia({ movs, empilhar }) {
+  const { dados, nomes } = useMemo(() => {
     const por = new Map()
-    for (const m of [...movs].sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em))) {
+    const nomes = []
+    for (const m of [...movs].sort((x, y) => new Date(x.criado_em) - new Date(y.criado_em))) {
       if (m.tipo !== 'venda') continue
+      if (!nomes.includes(m.produto)) nomes.push(m.produto)
       const k = dia(m.criado_em)
       const d = por.get(k) || { dia: k, latas: 0, valor: 0 }
       d.latas += m.qtd
       d.valor += Number(m.valor)
+      d[m.produto] = (d[m.produto] || 0) + m.qtd
       por.set(k, d)
     }
-    return [...por.values()]
+    return { dados: [...por.values()], nomes }
   }, [movs])
 
   if (dados.length === 0) return <Vazio texto="Ainda não há vendas." />
+
+  const linhas = empilhar
+    ? (d) => [...nomes.filter((n) => d[n]).map((n) => [n, String(d[n])]), ['Total', String(d.latas)], ['Recebido', brl(d.valor)]]
+    : (d) => [['Latas', String(d.latas)], ['Recebido', brl(d.valor)]]
 
   return (
     <ResponsiveContainer>
@@ -98,11 +107,18 @@ function VendasPorDia({ movs }) {
         <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
         <XAxis dataKey="dia" {...eixo} />
         <YAxis {...eixo} width={28} allowDecimals={false} />
-        <Tooltip
-          cursor={{ fill: 'var(--accent)', opacity: 0.5 }}
-          content={<Dica linhas={(d) => [['Latas', String(d.latas)], ['Recebido', brl(d.valor)]]} />}
-        />
-        <Bar dataKey="latas" fill="var(--primary)" radius={[8, 8, 0, 0]} maxBarSize={56} activeBar={{ fill: 'var(--primary)', opacity: 0.8 }} />
+        <Tooltip cursor={{ fill: 'var(--accent)', opacity: 0.5 }} content={<Dica linhas={linhas} />} />
+        {empilhar ? (
+          <>
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+            {nomes.map((n, i) => (
+              <Bar key={n} dataKey={n} stackId="v" fill={CORES[i % CORES.length]} maxBarSize={56}
+                radius={i === nomes.length - 1 ? [8, 8, 0, 0] : 0} />
+            ))}
+          </>
+        ) : (
+          <Bar dataKey="latas" fill="var(--primary)" radius={[8, 8, 0, 0]} maxBarSize={56} activeBar={{ fill: 'var(--primary)', opacity: 0.8 }} />
+        )}
       </BarChart>
     </ResponsiveContainer>
   )
@@ -112,7 +128,7 @@ const Vazio = ({ texto }) => (
   <p className="grid h-full place-items-center text-center text-sm text-muted-foreground">{texto}</p>
 )
 
-export function GraficoCard({ movs }) {
+export function GraficoCard({ movs, geral = false }) {
   const [aba, setAba] = useState('saldo')
   return (
     <Card>
@@ -120,7 +136,7 @@ export function GraficoCard({ movs }) {
         <div className="grid gap-1">
           <CardTitle className="text-base">{aba === 'saldo' ? 'Saldo ao longo do tempo' : 'Vendas por dia'}</CardTitle>
           <CardDescription>
-            {aba === 'saldo' ? 'Recebido menos gasto. Passe o mouse ou toque nos pontos.' : 'Latas vendidas em cada dia.'}
+            {aba === 'saldo' ? 'Recebido menos gasto. Passe o mouse ou toque nos pontos.' : geral ? 'Latas vendidas por dia, separadas por produto.' : 'Latas vendidas em cada dia.'}
           </CardDescription>
         </div>
         <Tabs value={aba} onValueChange={setAba}>
@@ -138,7 +154,7 @@ export function GraficoCard({ movs }) {
               initial={{ opacity: 0, x: aba === 'saldo' ? -16 : 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
             >
-              {aba === 'saldo' ? <Saldo movs={movs} /> : <VendasPorDia movs={movs} />}
+              {aba === 'saldo' ? <Saldo movs={movs} /> : <VendasPorDia movs={movs} empilhar={geral} />}
             </motion.div>
           </AnimatePresence>
         </div>
