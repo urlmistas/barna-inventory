@@ -1,69 +1,78 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { supabase } from './supabase.js'
-
-const brl = (v) =>
-  Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-const quando = (iso) =>
-  new Date(iso).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-  })
+import { motion, AnimatePresence } from 'motion/react'
+import { toast } from 'sonner'
+import {
+  GlassWater, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
+} from 'lucide-react'
+import { supabase } from '@/supabase.js'
+import { brl, cn, quando } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { AnimatedNumber } from '@/components/AnimatedNumber'
+import { SaldoChart } from '@/components/SaldoChart'
+import { Login } from '@/components/Login'
 
 function lerPreco() {
   try { return Number(localStorage.getItem('preco')) || 6 } catch { return 6 }
 }
 
-function Login() {
-  const [email, setEmail] = useState('')
-  const [senha, setSenha] = useState('')
-  const [erro, setErro] = useState('')
-  const [carregando, setCarregando] = useState(false)
-
-  async function entrar(e) {
-    e.preventDefault()
-    setCarregando(true)
-    setErro('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
-    if (error) setErro('E-mail ou senha incorretos.')
-    setCarregando(false)
-  }
-
+function Anel({ pct, children }) {
+  const raio = 52
+  const c = 2 * Math.PI * raio
   return (
-    <main className="login">
-      <form className="card login-card" onSubmit={entrar}>
-        <div className="logo" aria-hidden="true" />
-        <h1>Estoque</h1>
-        <p className="muted">Entre para ver suas vendas.</p>
-        <label>
-          E-mail
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
-        </label>
-        <label>
-          Senha
-          <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="current-password" required />
-        </label>
-        {erro && <p className="erro">{erro}</p>}
-        <button className="btn primary" disabled={carregando}>{carregando ? 'Entrando…' : 'Entrar'}</button>
-      </form>
-    </main>
+    <div className="relative grid size-44 place-items-center">
+      <svg viewBox="0 0 120 120" className="absolute inset-0 -rotate-90">
+        <circle cx="60" cy="60" r={raio} fill="none" strokeWidth="9" className="stroke-muted" />
+        <motion.circle
+          cx="60" cy="60" r={raio} fill="none" strokeWidth="9" strokeLinecap="round"
+          className="stroke-primary"
+          strokeDasharray={c}
+          initial={{ strokeDashoffset: c }}
+          animate={{ strokeDashoffset: c * (1 - pct / 100) }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
+        />
+      </svg>
+      <div className="relative text-center">{children}</div>
+    </div>
+  )
+}
+
+function Stat({ icon: Icon, rotulo, valor, tom }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-2 p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">{rotulo}</span>
+          <Icon className={cn('size-4', tom)} />
+        </div>
+        <strong className={cn('text-lg font-bold tabular-nums tracking-tight sm:text-xl', tom)}>
+          <AnimatedNumber value={valor} format={brl} />
+        </strong>
+      </CardContent>
+    </Card>
   )
 }
 
 function Painel({ sessao }) {
   const [movs, setMovs] = useState([])
   const [carregando, setCarregando] = useState(true)
-  const [erro, setErro] = useState('')
   const [preco, setPreco] = useState(lerPreco)
+  const [qtd, setQtd] = useState(1)
+  const [salvando, setSalvando] = useState(false)
+  const [filtro, setFiltro] = useState('todos')
+  const [compraAberta, setCompraAberta] = useState(false)
   const [compra, setCompra] = useState({ qtd: '6', total: '22' })
-  const [mostraCompra, setMostraCompra] = useState(false)
 
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
-      .from('estoque_mov')
-      .select('*')
-      .order('criado_em', { ascending: false })
-    if (error) setErro('Não consegui carregar os dados.')
-    else { setMovs(data); setErro('') }
+      .from('estoque_mov').select('*').order('criado_em', { ascending: false })
+    if (error) toast.error('Não consegui carregar os dados.')
+    else setMovs(data)
     setCarregando(false)
   }, [])
 
@@ -79,16 +88,52 @@ function Painel({ sessao }) {
     return { estoque: comprado - vendido, comprado, vendido, custo, receita, saldo: receita - custo }
   }, [movs])
 
-  async function registrar(tipo, qtd, valor) {
-    const { error } = await supabase.from('estoque_mov').insert({ tipo, qtd, valor })
-    if (error) { setErro('Não consegui salvar. Tente de novo.'); return }
+  const pct = r.comprado ? (r.vendido / r.comprado) * 100 : 0
+  const qtdOk = Math.min(qtd, Math.max(r.estoque, 1))
+  const total = qtdOk * Number(preco || 0)
+  const visiveis = movs.filter((m) => filtro === 'todos' || m.tipo === filtro)
+
+  async function registrar(tipo, n, valor) {
+    setSalvando(true)
+    const { error } = await supabase.from('estoque_mov').insert({ tipo, qtd: n, valor })
+    setSalvando(false)
+    if (error) { toast.error('Não consegui salvar. Tente de novo.'); return false }
     await carregar()
+    return true
   }
 
-  async function apagar(id) {
-    const { error } = await supabase.from('estoque_mov').delete().eq('id', id)
-    if (error) setErro('Não consegui apagar.')
-    else await carregar()
+  async function vender() {
+    if (await registrar('venda', qtdOk, total)) {
+      toast.success(`Venda registrada: ${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)}`)
+      setQtd(1)
+    }
+  }
+
+  async function salvarCompra(e) {
+    e.preventDefault()
+    const n = parseInt(compra.qtd, 10)
+    const valor = parseFloat(String(compra.total).replace(',', '.'))
+    if (!(n > 0) || !(valor >= 0)) return
+    if (await registrar('compra', n, valor)) {
+      toast.success(`Compra registrada: +${n} latas`)
+      setCompraAberta(false)
+    }
+  }
+
+  async function apagar(m) {
+    const { error } = await supabase.from('estoque_mov').delete().eq('id', m.id)
+    if (error) { toast.error('Não consegui apagar.'); return }
+    await carregar()
+    toast('Lançamento apagado', {
+      action: {
+        label: 'Desfazer',
+        onClick: async () => {
+          const { id, user_id, criado_em, produto, tipo, qtd: q, valor } = m
+          await supabase.from('estoque_mov').insert({ id, user_id, criado_em, produto, tipo, qtd: q, valor })
+          carregar()
+        },
+      },
+    })
   }
 
   function mudarPreco(v) {
@@ -96,99 +141,155 @@ function Painel({ sessao }) {
     try { localStorage.setItem('preco', String(v)) } catch { /* sem armazenamento */ }
   }
 
-  async function salvarCompra(e) {
-    e.preventDefault()
-    const qtd = parseInt(compra.qtd, 10)
-    const total = parseFloat(String(compra.total).replace(',', '.'))
-    if (!(qtd > 0) || !(total >= 0)) return
-    await registrar('compra', qtd, total)
-    setMostraCompra(false)
-  }
-
-  const progresso = r.comprado ? (r.vendido / r.comprado) * 100 : 0
-  const podeVender = r.estoque > 0 && Number(preco) >= 0
-
   return (
-    <main className="app">
-      <header className="topo">
-        <div>
-          <h1>Estoque</h1>
-          <p className="muted">Coca-Cola</p>
+    <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 pb-16 pt-5">
+      <header className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/30">
+            <GlassWater className="size-5" />
+          </div>
+          <div className="leading-tight">
+            <h1 className="text-lg font-extrabold tracking-tight">Estoque</h1>
+            <p className="text-xs text-muted-foreground">Coca-Cola</p>
+          </div>
         </div>
-        <button className="btn ghost" onClick={() => supabase.auth.signOut()} title={sessao.user.email}>Sair</button>
+        <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} title={sessao.user.email}>
+          <LogOut /> Sair
+        </Button>
       </header>
 
-      <section className="card hero">
-        <span className="rotulo">Em estoque</span>
-        <strong className="grande">{r.estoque}</strong>
-        <span className="muted">{r.estoque === 1 ? 'lata' : 'latas'}</span>
-        <div className="barra" role="progressbar" aria-valuenow={Math.round(progresso)} aria-valuemin="0" aria-valuemax="100">
-          <i style={{ width: `${progresso}%` }} />
-        </div>
-        <span className="muted">{r.vendido} vendidas de {r.comprado}</span>
-      </section>
+      <Card className="overflow-hidden">
+        <CardContent className="flex flex-col items-center gap-3 p-6">
+          <Anel pct={pct}>
+            <div className="text-5xl font-extrabold tabular-nums tracking-tighter">
+              <AnimatedNumber value={r.estoque} />
+            </div>
+            <div className="text-xs font-medium text-muted-foreground">{r.estoque === 1 ? 'lata em estoque' : 'latas em estoque'}</div>
+          </Anel>
+          <Badge variant="muted">{r.vendido} vendidas de {r.comprado}</Badge>
+        </CardContent>
+      </Card>
 
-      <section className="grade">
-        <div className="card mini"><span className="rotulo">Gastei</span><strong>{brl(r.custo)}</strong></div>
-        <div className="card mini"><span className="rotulo">Recebi</span><strong>{brl(r.receita)}</strong></div>
-        <div className={`card mini ${r.saldo >= 0 ? 'pos' : 'neg'}`}>
-          <span className="rotulo">Saldo</span><strong>{brl(r.saldo)}</strong>
-        </div>
-      </section>
+      <div className="grid grid-cols-3 gap-3">
+        <Stat icon={TrendingDown} rotulo="Gastei" valor={r.custo} />
+        <Stat icon={TrendingUp} rotulo="Recebi" valor={r.receita} tom="text-success" />
+        <Stat icon={Wallet} rotulo="Saldo" valor={r.saldo} tom={r.saldo >= 0 ? 'text-success' : 'text-destructive'} />
+      </div>
 
-      <section className="card acoes">
-        <div className="linha-preco">
-          <label>
-            Preço por lata
-            <input
-              type="number" inputMode="decimal" min="0" step="0.5"
-              value={preco} onChange={(e) => mudarPreco(e.target.value)}
-            />
-          </label>
-          <button className="btn primary vender" disabled={!podeVender} onClick={() => registrar('venda', 1, Number(preco))}>
-            Vendi 1 · {brl(preco)}
-          </button>
-        </div>
-        {r.estoque === 0 && <p className="muted">Sem estoque. Registre uma compra.</p>}
-        <button className="btn" onClick={() => setMostraCompra((v) => !v)}>
-          {mostraCompra ? 'Cancelar' : 'Registrar compra'}
-        </button>
-        {mostraCompra && (
-          <form className="compra" onSubmit={salvarCompra}>
-            <label>Latas
-              <input type="number" inputMode="numeric" min="1" value={compra.qtd} onChange={(e) => setCompra({ ...compra, qtd: e.target.value })} required />
-            </label>
-            <label>Total pago (R$)
-              <input type="number" inputMode="decimal" min="0" step="0.01" value={compra.total} onChange={(e) => setCompra({ ...compra, total: e.target.value })} required />
-            </label>
-            <button className="btn primary">Salvar compra</button>
+      <Card>
+        <CardHeader>
+          <CardTitle>Nova venda</CardTitle>
+          <CardDescription>Escolha quantas latas e confirme.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex items-end gap-3">
+            <div className="grid gap-2">
+              <Label>Quantidade</Label>
+              <div className="flex items-center gap-1 rounded-lg border p-1">
+                <Button variant="ghost" size="icon-sm" aria-label="Menos" onClick={() => setQtd(Math.max(1, qtd - 1))} disabled={qtdOk <= 1}><Minus /></Button>
+                <span className="w-8 text-center text-base font-bold tabular-nums">{qtdOk}</span>
+                <Button variant="ghost" size="icon-sm" aria-label="Mais" onClick={() => setQtd(Math.min(r.estoque, qtdOk + 1))} disabled={qtdOk >= r.estoque}><Plus /></Button>
+              </div>
+            </div>
+            <div className="grid flex-1 gap-2">
+              <Label htmlFor="preco">Preço por lata (R$)</Label>
+              <Input id="preco" type="number" inputMode="decimal" min="0" step="0.5" value={preco} onChange={(e) => mudarPreco(e.target.value)} />
+            </div>
+          </div>
+          <Button size="lg" onClick={vender} disabled={r.estoque < 1 || salvando}>
+            {salvando ? <Loader2 className="animate-spin" /> : <ShoppingCart />}
+            Vender · {brl(total)}
+          </Button>
+          {r.estoque < 1 && !carregando && <p className="text-center text-sm text-muted-foreground">Sem estoque. Registre uma compra.</p>}
+          <Button variant="secondary" onClick={() => setCompraAberta(true)}>
+            <PackagePlus /> Registrar compra
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Saldo ao longo do tempo</CardTitle>
+          <CardDescription>Recebido menos gasto, a cada lançamento.</CardDescription>
+        </CardHeader>
+        <CardContent><SaldoChart movs={movs} /></CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Histórico</CardTitle>
+          <Tabs value={filtro} onValueChange={setFiltro}>
+            <TabsList>
+              <TabsTrigger value="todos">Todos</TabsTrigger>
+              <TabsTrigger value="venda">Vendas</TabsTrigger>
+              <TabsTrigger value="compra">Compras</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </CardHeader>
+        <CardContent>
+          {carregando ? (
+            <div className="flex justify-center py-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
+          ) : visiveis.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+              <Inbox className="size-8" />
+              <p className="text-sm">Nada por aqui ainda.</p>
+            </div>
+          ) : (
+            <ul className="divide-y">
+              <AnimatePresence initial={false}>
+                {visiveis.map((m) => (
+                  <motion.li
+                    key={m.id} layout
+                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                    className="flex items-center gap-3 overflow-hidden py-3"
+                  >
+                    <div className={cn('grid size-9 shrink-0 place-items-center rounded-full', m.tipo === 'venda' ? 'bg-success/15 text-success' : 'bg-primary/12 text-primary')}>
+                      {m.tipo === 'venda' ? <TrendingUp className="size-4" /> : <PackagePlus className="size-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">
+                        {m.tipo === 'venda' ? 'Venda' : 'Compra'} · {m.tipo === 'venda' ? '−' : '+'}{m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{quando(m.criado_em)}</p>
+                    </div>
+                    <span className={cn('text-sm font-bold tabular-nums', m.tipo === 'venda' ? 'text-success' : 'text-foreground')}>
+                      {m.tipo === 'venda' ? '+' : '−'}{brl(m.valor)}
+                    </span>
+                    <Button variant="ghost" size="icon-sm" aria-label="Apagar lançamento" onClick={() => apagar(m)}>
+                      <X className="text-muted-foreground" />
+                    </Button>
+                  </motion.li>
+                ))}
+              </AnimatePresence>
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={compraAberta} onOpenChange={setCompraAberta}>
+        <DialogContent>
+          <div>
+            <DialogTitle>Registrar compra</DialogTitle>
+            <DialogDescription>Quantas latas entraram e quanto você pagou no total.</DialogDescription>
+          </div>
+          <form onSubmit={salvarCompra} className="grid gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2">
+                <Label htmlFor="c-qtd">Latas</Label>
+                <Input id="c-qtd" type="number" inputMode="numeric" min="1" value={compra.qtd} onChange={(e) => setCompra({ ...compra, qtd: e.target.value })} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="c-total">Total pago (R$)</Label>
+                <Input id="c-total" type="number" inputMode="decimal" min="0" step="0.01" value={compra.total} onChange={(e) => setCompra({ ...compra, total: e.target.value })} required />
+              </div>
+            </div>
+            <Button size="lg" disabled={salvando}>
+              {salvando && <Loader2 className="animate-spin" />} Salvar compra
+            </Button>
           </form>
-        )}
-      </section>
-
-      {erro && <p className="erro">{erro}</p>}
-
-      <section className="card">
-        <h2>Histórico</h2>
-        {carregando ? <p className="muted">Carregando…</p> : movs.length === 0 ? (
-          <p className="muted">Nada registrado ainda.</p>
-        ) : (
-          <ul className="lista">
-            {movs.map((m) => (
-              <li key={m.id}>
-                <span className={`pilula ${m.tipo}`}>{m.tipo === 'compra' ? 'Compra' : 'Venda'}</span>
-                <div className="info">
-                  <b>{m.tipo === 'compra' ? '+' : '−'}{m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}</b>
-                  <small className="muted">{quando(m.criado_em)}</small>
-                </div>
-                <span className="valor">{brl(m.valor)}</span>
-                <button className="x" aria-label="Apagar lançamento" onClick={() => apagar(m.id)}>×</button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </main>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }
 
