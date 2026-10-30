@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { toast } from 'sonner'
 import {
-  Archive, ArchiveRestore, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
+  Archive, ArchiveRestore, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
 } from 'lucide-react'
 import { supabase } from '@/supabase.js'
 import { brl, cn, quando } from '@/lib/utils'
@@ -33,6 +33,9 @@ function lerPreco(info) {
   } catch { /* sem armazenamento */ }
   return info.preco_venda ?? ''
 }
+
+const GERAL = '__geral__'
+const ESTOQUE_BAIXO = 2
 
 function lerProduto() {
   try { return localStorage.getItem('produto') || '' } catch { return '' }
@@ -109,7 +112,7 @@ function Painel({ sessao }) {
     setProdutos(data)
     setProduto((atual) => {
       const ativos = data.filter((p) => p.ativo)
-      return ativos.some((p) => p.nome === atual) ? atual : ativos[0]?.nome || ''
+      return atual === GERAL || ativos.some((p) => p.nome === atual) ? atual : ativos[0]?.nome || ''
     })
   }, [])
 
@@ -117,14 +120,29 @@ function Painel({ sessao }) {
 
   const ativos = useMemo(() => produtos.filter((p) => p.ativo), [produtos])
   const info = produtos.find((p) => p.nome === produto)
-  const estoques = useMemo(() => {
+  const geral = produto === GERAL
+  const { estoques, comprados } = useMemo(() => {
     const e = {}
-    for (const m of todas) e[m.produto] = (e[m.produto] || 0) + (m.tipo === 'compra' ? m.qtd : -m.qtd)
-    return e
+    const c = {}
+    for (const m of todas) {
+      e[m.produto] = (e[m.produto] || 0) + (m.tipo === 'compra' ? m.qtd : -m.qtd)
+      if (m.tipo === 'compra') c[m.produto] = (c[m.produto] || 0) + m.qtd
+    }
+    return { estoques: e, comprados: c }
+  }, [todas])
+  const baixo = (nome) => (comprados[nome] || 0) > 0 && (estoques[nome] || 0) <= ESTOQUE_BAIXO
+  const porProduto = useMemo(() => {
+    const por = {}
+    for (const m of todas) {
+      const d = (por[m.produto] ||= { nome: m.produto, estoque: 0, vendido: 0, custo: 0, receita: 0 })
+      if (m.tipo === 'compra') { d.estoque += m.qtd; d.custo += Number(m.valor) }
+      else { d.estoque -= m.qtd; d.vendido += m.qtd; d.receita += Number(m.valor) }
+    }
+    return Object.values(por)
   }, [todas])
   useEffect(() => { setPreco(lerPreco(info)) }, [info])
 
-  const movs = useMemo(() => todas.filter((m) => m.produto === produto), [todas, produto])
+  const movs = useMemo(() => (geral ? todas : todas.filter((m) => m.produto === produto)), [todas, produto, geral])
 
   const r = useMemo(() => {
     const soma = (tipo, campo) =>
@@ -235,7 +253,7 @@ function Painel({ sessao }) {
           <img src="./box.png" alt="" className="size-11 drop-shadow-md" />
           <div className="leading-tight">
             <h1 className="text-lg font-extrabold tracking-tight">Estoque</h1>
-            <p className="text-xs text-muted-foreground">{produto}</p>
+            <p className="text-xs text-muted-foreground">{geral ? 'Todos os produtos' : produto}</p>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} title={sessao.user.email}>
@@ -246,8 +264,12 @@ function Painel({ sessao }) {
       <div className="flex items-center gap-2">
         <Tabs value={produto} onValueChange={trocarProduto} className="min-w-0">
           <TabsList className="h-11 max-w-full overflow-x-auto">
+            <TabsTrigger value={GERAL} className="h-9 px-5 text-sm">Geral</TabsTrigger>
             {ativos.map((p) => (
-              <TabsTrigger key={p.id} value={p.nome} className="h-9 px-5 text-sm">{p.nome}</TabsTrigger>
+              <TabsTrigger key={p.id} value={p.nome} className="h-9 px-5 text-sm">
+                {p.nome}
+                {baixo(p.nome) && <span className="ml-2 size-1.5 rounded-full bg-destructive" title="Estoque baixo" />}
+              </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
@@ -272,6 +294,12 @@ function Painel({ sessao }) {
             <div className="text-xs font-medium text-muted-foreground">{r.estoque === 1 ? 'lata em estoque' : 'latas em estoque'}</div>
           </Anel>
           <Badge variant="muted">{r.vendido} vendidas de {r.comprado}</Badge>
+          {!geral && r.comprado > 0 && r.estoque <= ESTOQUE_BAIXO && (
+            <Badge variant="danger">
+              <TriangleAlert className="size-3.5" />
+              {r.estoque <= 0 ? 'Acabou! Hora de comprar mais' : `Estoque baixo: só ${r.estoque} ${r.estoque === 1 ? 'lata' : 'latas'}`}
+            </Badge>
+          )}
         </CardContent>
       </Card>
 
@@ -281,6 +309,33 @@ function Painel({ sessao }) {
         <Stat icon={Wallet} rotulo="Saldo" valor={r.saldo} tom={r.saldo >= 0 ? 'text-success' : 'text-destructive'} />
       </div>
 
+      {geral ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>Por produto</CardTitle>
+          <CardDescription>Escolha um produto acima para vender ou comprar.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="divide-y">
+            {porProduto.map((d) => (
+              <li key={d.nome} className="flex items-center gap-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-2 text-sm font-semibold">
+                    {d.nome}
+                    {baixo(d.nome) && <Badge variant="danger">Baixo</Badge>}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{d.estoque} em estoque · {d.vendido} vendidas</p>
+                </div>
+                <span className={cn('text-sm font-bold tabular-nums', d.receita - d.custo >= 0 ? 'text-success' : 'text-destructive')}>
+                  {brl(d.receita - d.custo)}
+                </span>
+              </li>
+            ))}
+            {porProduto.length === 0 && <li className="py-6 text-center text-sm text-muted-foreground">Nada registrado ainda.</li>}
+          </ul>
+        </CardContent>
+      </Card>
+      ) : (
       <Card>
         <CardHeader>
           <CardTitle>Nova venda</CardTitle>
@@ -311,6 +366,7 @@ function Painel({ sessao }) {
           </Button>
         </CardContent>
       </Card>
+      )}
       </div>
       <div className="flex flex-col gap-5 lg:col-span-7">
       <GraficoCard movs={movs} />
@@ -348,7 +404,7 @@ function Painel({ sessao }) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold">
-                        {m.tipo === 'venda' ? 'Venda' : 'Compra'} · {m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}
+                        {m.tipo === 'venda' ? 'Venda' : 'Compra'}{geral && ` · ${m.produto}`} · {m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}
                       </p>
                       <p className="text-xs text-muted-foreground">{quando(m.criado_em)}</p>
                     </div>
