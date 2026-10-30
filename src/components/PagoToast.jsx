@@ -16,7 +16,7 @@ function Aviso({ id, tom, titulo, detalhe, acao, duracao }) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: 'spring', stiffness: 400, damping: 28 }}
       onClick={() => toast.dismiss(id)}
-      className="relative w-[min(92vw,380px)] cursor-pointer overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-2xl shadow-black/25"
+      className="group relative w-[min(92vw,380px)] cursor-pointer overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-2xl shadow-black/25"
     >
       <div className="flex items-center gap-3 px-4 py-4">
         <motion.span
@@ -40,18 +40,18 @@ function Aviso({ id, tom, titulo, detalhe, acao, duracao }) {
           </button>
         )}
       </div>
-      <motion.div
-        className={cn('absolute inset-x-0 bottom-0 h-1 origin-left', barra)}
-        initial={{ scaleX: 1 }}
-        animate={{ scaleX: 0 }}
-        transition={{ duration: duracao / 1000, ease: 'linear' }}
+      {/* a barra manda: quando ela termina o aviso fecha, então os dois acabam juntos; passar o mouse pausa os dois */}
+      <div
+        className={cn('absolute inset-x-0 bottom-0 h-1 origin-left group-hover:[animation-play-state:paused]', barra)}
+        style={{ animation: `encolher ${duracao}ms linear forwards` }}
+        onAnimationEnd={() => toast.dismiss(id)}
       />
     </motion.div>
   )
 }
 
 const mostrar = (tom, titulo, detalhe, { acao, duracao = 4000 } = {}) =>
-  toast.custom((id) => <Aviso id={id} tom={tom} titulo={titulo} detalhe={detalhe} acao={acao} duracao={duracao} />, { duration: duracao })
+  toast.custom((id) => <Aviso id={id} tom={tom} titulo={titulo} detalhe={detalhe} acao={acao} duracao={duracao} />, { duration: Infinity })
 
 export const mostrarPago = (titulo, detalhe) => mostrar('pago', titulo, detalhe)
 export const mostrarApagado = (titulo, detalhe, acao) => mostrar('apagado', titulo, detalhe, { acao, duracao: 6000 })

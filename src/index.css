@@ -86,3 +86,8 @@
     background-repeat: no-repeat;
   }
 }
+
+@keyframes encolher {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}

@@ -105,7 +105,7 @@ function Painel({ sessao }) {
 
   async function vender() {
     if (await registrar('venda', qtdOk, total)) {
-      mostrarPago('Pago!', `${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)}`)
+      mostrarPago('Venda registrada', `${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)}`)
       setQtd(1)
     }
   }
@@ -126,10 +126,10 @@ function Painel({ sessao }) {
     if (error) { toast.error('Não consegui apagar.'); return }
     await carregar()
     mostrarApagado(
-      m.tipo === 'venda' ? 'Pagamento apagado' : 'Compra apagada',
+      m.tipo === 'venda' ? 'Venda desfeita' : 'Compra desfeita',
       `${m.qtd} ${m.qtd === 1 ? 'lata' : 'latas'} · ${brl(m.valor)}`,
       {
-        label: 'Desfazer',
+        label: 'Restaurar',
         onClick: async () => {
           const { id, user_id, criado_em, produto, tipo, qtd: q, valor } = m
           await supabase.from('estoque_mov').insert({ id, user_id, criado_em, produto, tipo, qtd: q, valor })
