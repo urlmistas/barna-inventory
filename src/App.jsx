@@ -45,9 +45,9 @@ const nomeForma = (id) => FORMAS.find((f) => f.id === id)?.nome
 
 // valores de taxa em R$: Pix grátis, débito R$ 0,04 e crédito R$ 0,19 (dá para trocar para % em "Taxas")
 const TAXAS_PADRAO = {
-  pix: { tipo: 'fixo', valor: 0 },
-  debito: { tipo: 'fixo', valor: 0.04 },
-  credito: { tipo: 'fixo', valor: 0.19 },
+  pix: { tipo: 'fixo', valor: 0, acrescimo: 0 },
+  debito: { tipo: 'fixo', valor: 0.04, acrescimo: 0 },
+  credito: { tipo: 'fixo', valor: 0.19, acrescimo: 0 },
 }
 
 function lerForma() {
@@ -147,7 +147,7 @@ function Painel({ sessao }) {
     const { data, error } = await supabase.from('estoque_taxa').select('*')
     if (error) return
     const t = { ...TAXAS_PADRAO }
-    for (const x of data) t[x.forma] = { tipo: x.tipo, valor: Number(x.valor) }
+    for (const x of data) t[x.forma] = { tipo: x.tipo, valor: Number(x.valor), acrescimo: Number(x.acrescimo || 0) }
     setTaxas(t)
   }, [])
 
@@ -161,11 +161,11 @@ function Painel({ sessao }) {
   }
 
   async function salvarTaxas(novo) {
-    const linhas = Object.entries(novo).map(([f, t]) => ({ forma: f, tipo: t.tipo, valor: t.valor }))
+    const linhas = Object.entries(novo).map(([f, t]) => ({ forma: f, tipo: t.tipo, valor: t.valor, acrescimo: t.acrescimo }))
     const { error } = await supabase.from('estoque_taxa').upsert(linhas, { onConflict: 'user_id,forma' })
-    if (error) { mostrarErro('Não consegui salvar as taxas.'); return false }
+    if (error) { mostrarErro('Não consegui salvar.'); return false }
     setTaxas(novo)
-    mostrarSucesso('Taxas salvas', 'Valem para as próximas vendas')
+    mostrarSucesso('Pagamento atualizado', 'Vale para as próximas vendas')
     return true
   }
 
@@ -237,7 +237,9 @@ function Painel({ sessao }) {
 
   const pct = r.comprado ? (r.vendido / r.comprado) * 100 : 0
   const qtdOk = Math.min(qtd, Math.max(r.estoque, 1))
-  const total = qtdOk * Number(preco || 0)
+  const acrescimo = taxas[forma]?.acrescimo || 0
+  const precoForma = Number(preco || 0) + acrescimo
+  const total = Math.round(qtdOk * precoForma * 100) / 100
   const visiveis = movs.filter((m) => filtro === 'todos' || m.tipo === filtro)
 
   async function registrar(tipo, n, valor, extra = {}) {
@@ -381,11 +383,11 @@ function Painel({ sessao }) {
         <div className="flex items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Taxas de pagamento" onClick={() => setTaxasAberto(true)}>
+              <Button variant="ghost" size="icon" aria-label="Taxas e acréscimo por pagamento" onClick={() => setTaxasAberto(true)}>
                 <Percent />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Taxas de pagamento</TooltipContent>
+            <TooltipContent>Taxas e acréscimo por pagamento</TooltipContent>
           </Tooltip>
           <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} title={sessao.user.email}>
             <LogOut /> Sair
@@ -485,6 +487,11 @@ function Painel({ sessao }) {
               </TabsList>
             </Tabs>
           </div>
+          {acrescimo > 0 && (
+            <p className="-mt-1 text-center text-xs text-muted-foreground">
+              No {nomeForma(forma).toLowerCase()}: {brl(precoForma)} por lata ({brl(preco)} + {brl(acrescimo)})
+            </p>
+          )}
           <Button size="lg" onClick={vender} disabled={r.estoque < 1 || salvando}>
             {salvando ? <Loader2 className="animate-spin" /> : <ShoppingCart />}
             Vender · {brl(total)}
