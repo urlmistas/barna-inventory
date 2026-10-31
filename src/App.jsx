@@ -155,7 +155,9 @@ function Painel({ sessao }) {
 
   const taxaDe = (f, total) => {
     const t = taxas[f] || TAXAS_PADRAO.pix
-    return Math.round((t.tipo === 'fixo' ? t.valor : (total * t.valor) / 100) * 100) / 100
+    if (t.tipo === 'fixo') return Math.round(t.valor * 100) / 100
+    // percentual sempre sobe para o próximo centavo (a Ton cobra R$ 0,04 sobre R$ 6 com 0,57%: 0,0342 vira 0,04)
+    return Math.ceil((total * t.valor) / 100 * 100 - 1e-9) / 100
   }
 
   async function salvarTaxas(novo) {
