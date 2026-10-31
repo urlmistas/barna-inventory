@@ -43,11 +43,11 @@ const FORMAS = [
 ]
 const nomeForma = (id) => FORMAS.find((f) => f.id === id)?.nome
 
-// taxas do plano Ton Mega+ (valem até R$ 5.000 em vendas): Pix grátis, débito e crédito 0,57% por venda
+// valores de taxa em R$: Pix grátis, débito R$ 0,04 e crédito R$ 0,19 (dá para trocar para % em "Taxas")
 const TAXAS_PADRAO = {
   pix: { tipo: 'fixo', valor: 0 },
-  debito: { tipo: 'percentual', valor: 0.57 },
-  credito: { tipo: 'percentual', valor: 0.57 },
+  debito: { tipo: 'fixo', valor: 0.04 },
+  credito: { tipo: 'fixo', valor: 0.19 },
 }
 
 function lerForma() {
