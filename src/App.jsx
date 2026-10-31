@@ -472,7 +472,7 @@ function Painel({ sessao }) {
             </div>
             <div className="grid flex-1 gap-2">
               <Label htmlFor="preco">Preço por lata (R$)</Label>
-              <Input id="preco" type="number" inputMode="decimal" min="0" step="0.5" value={preco} onChange={(e) => mudarPreco(e.target.value)} />
+              <Input id="preco" type="number" inputMode="decimal" min="0" step="0.01" value={preco} onChange={(e) => mudarPreco(e.target.value)} />
             </div>
           </div>
           <div className="grid gap-2">
