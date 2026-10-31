@@ -1,10 +1,11 @@
 import { motion } from 'motion/react'
 import { toast } from 'sonner'
-import { CircleCheck, Trash2 } from 'lucide-react'
+import { CircleAlert, CircleCheck, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const TONS = {
   pago: { Icone: CircleCheck, icone: 'bg-primary/15 text-primary', barra: 'bg-primary' },
+  erro: { Icone: CircleAlert, icone: 'bg-destructive/15 text-destructive', barra: 'bg-destructive' },
   apagado: { Icone: Trash2, icone: 'bg-destructive/15 text-destructive', barra: 'bg-destructive' },
 }
 
@@ -55,3 +56,5 @@ const mostrar = (tom, titulo, detalhe, { acao, duracao = 4000 } = {}) =>
 
 export const mostrarPago = (titulo, detalhe) => mostrar('pago', titulo, detalhe)
 export const mostrarApagado = (titulo, detalhe, acao) => mostrar('apagado', titulo, detalhe, { acao, duracao: 6000 })
+export const mostrarSucesso = (titulo, detalhe) => mostrar('pago', titulo, detalhe)
+export const mostrarErro = (titulo, detalhe) => mostrar('erro', titulo, detalhe, { duracao: 5000 })

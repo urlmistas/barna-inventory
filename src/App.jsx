@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { toast } from 'sonner'
 import {
   Boxes, CreditCard, Percent, PiggyBank, QrCode, ShoppingBag, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
 } from 'lucide-react'
@@ -20,7 +19,7 @@ import { ProdutoLinha } from '@/components/ProdutoLinha'
 import { TaxasDialog } from '@/components/TaxasDialog'
 import { GraficoCard } from '@/components/SaldoChart'
 import { Login } from '@/components/Login'
-import { mostrarApagado, mostrarPago } from '@/components/PagoToast'
+import { mostrarApagado, mostrarErro, mostrarPago, mostrarSucesso } from '@/components/PagoToast'
 
 // produtos que entram na primeira vez que a conta abre o site (depois ficam no banco)
 const PRODUTOS_INICIAIS = [
@@ -124,7 +123,7 @@ function Painel({ sessao }) {
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
       .from('estoque_mov').select('*').order('criado_em', { ascending: false })
-    if (error) toast.error('Não consegui carregar os dados.')
+    if (error) mostrarErro('Não consegui carregar os dados.')
     else setTodas(data)
     setCarregando(false)
   }, [])
@@ -136,7 +135,7 @@ function Painel({ sessao }) {
       await supabase.from('estoque_produto').insert(PRODUTOS_INICIAIS)
       ;({ data, error } = await ler())
     }
-    if (error) { toast.error('Não consegui carregar os produtos.'); return }
+    if (error) { mostrarErro('Não consegui carregar os produtos.'); return }
     setProdutos(data)
     setProduto((atual) => {
       const ativos = data.filter((p) => p.ativo)
@@ -162,9 +161,9 @@ function Painel({ sessao }) {
   async function salvarTaxas(novo) {
     const linhas = Object.entries(novo).map(([f, t]) => ({ forma: f, tipo: t.tipo, valor: t.valor }))
     const { error } = await supabase.from('estoque_taxa').upsert(linhas, { onConflict: 'user_id,forma' })
-    if (error) { toast.error('Não consegui salvar as taxas.'); return false }
+    if (error) { mostrarErro('Não consegui salvar as taxas.'); return false }
     setTaxas(novo)
-    toast.success('Taxas salvas')
+    mostrarSucesso('Taxas salvas', 'Valem para as próximas vendas')
     return true
   }
 
@@ -243,7 +242,7 @@ function Painel({ sessao }) {
     setSalvando(true)
     const { error } = await supabase.from('estoque_mov').insert({ produto, tipo, qtd: n, valor, ...extra })
     setSalvando(false)
-    if (error) { toast.error('Não consegui salvar. Tente de novo.'); return false }
+    if (error) { mostrarErro('Não consegui salvar. Tente de novo.'); return false }
     await carregar()
     return true
   }
@@ -265,14 +264,14 @@ function Painel({ sessao }) {
     const valor = parseFloat(String(compra.total).replace(',', '.'))
     if (!(n > 0) || !(valor >= 0)) return
     if (await registrar('compra', n, valor)) {
-      toast.success(`Compra registrada: ${produto}, +${n} latas`)
+      mostrarSucesso('Compra registrada', `${produto} · +${n} ${n === 1 ? 'lata' : 'latas'}`)
       setCompraAberta(false)
     }
   }
 
   async function apagar(m) {
     const { error } = await supabase.from('estoque_mov').delete().eq('id', m.id)
-    if (error) { toast.error('Não consegui apagar.'); return }
+    if (error) { mostrarErro('Não consegui apagar.'); return }
     await carregar()
     mostrarApagado(
       m.tipo === 'venda' ? 'Venda desfeita' : 'Compra desfeita',
@@ -301,21 +300,23 @@ function Painel({ sessao }) {
     const num = (v) => (String(v).trim() === '' ? null : parseFloat(String(v).replace(',', '.')))
     const { error } = await supabase.from('estoque_produto').insert({ nome, preco_compra: num(novo.compra), preco_venda: num(novo.venda) })
     if (error) {
-      toast.error(error.code === '23505' ? 'Esse produto já existe. Se estiver arquivado, reative em Gerenciar.' : 'Não consegui adicionar o produto.')
+      if (error.code === '23505') mostrarErro('Esse produto já existe', 'Se estiver arquivado, reative em Gerenciar')
+      else mostrarErro('Não consegui adicionar o produto')
       return
     }
     await carregarProdutos()
     trocarProduto(nome)
     setNovo({ nome: '', compra: '', venda: '' })
     setNovoAberto(false)
-    toast.success(`${nome} adicionado`)
+    mostrarSucesso(`${nome} adicionado`)
   }
 
   async function alternarAtivo(p) {
     const { error } = await supabase.from('estoque_produto').update({ ativo: !p.ativo }).eq('id', p.id)
-    if (error) { toast.error('Não consegui atualizar o produto.'); return }
+    if (error) { mostrarErro('Não consegui atualizar o produto.'); return }
     await carregarProdutos()
-    toast.success(p.ativo ? `${p.nome} arquivado. O histórico foi mantido.` : `${p.nome} reativado`)
+    if (p.ativo) mostrarSucesso(`${p.nome} arquivado`, 'O histórico foi mantido')
+    else mostrarSucesso(`${p.nome} reativado`)
   }
 
   async function salvarEdicao(p, f) {
@@ -323,10 +324,10 @@ function Painel({ sessao }) {
     if (!nome) return false
     const num = (v) => (String(v).trim() === '' ? null : parseFloat(String(v).replace(',', '.')))
     const { error } = await supabase.from('estoque_produto').update({ preco_compra: num(f.compra), preco_venda: num(f.venda) }).eq('id', p.id)
-    if (error) { toast.error('Não consegui salvar os valores.'); return false }
+    if (error) { mostrarErro('Não consegui salvar os valores.'); return false }
     if (nome !== p.nome) {
       const { error: e2 } = await supabase.rpc('estoque_renomear', { antigo: p.nome, novo: nome })
-      if (e2) { toast.error(e2.code === '23505' ? 'Já existe um produto com esse nome.' : 'Não consegui trocar o nome.'); return false }
+      if (e2) { mostrarErro(e2.code === '23505' ? 'Já existe um produto com esse nome' : 'Não consegui trocar o nome'); return false }
     }
     try {
       // o preço de venda editado vale de novo (tira o valor lembrado no aparelho)
@@ -336,16 +337,16 @@ function Painel({ sessao }) {
     if (produto === p.nome && nome !== p.nome) trocarProduto(nome)
     await Promise.all([carregarProdutos(), carregar()])
     setPreco(lerPreco({ ...p, nome, preco_venda: num(f.venda) }))
-    toast.success(`${nome} atualizado`)
+    mostrarSucesso(`${nome} atualizado`)
     return true
   }
 
   async function apagarProduto(p) {
     const { error } = await supabase.rpc('estoque_apagar_produto', { alvo: p.nome })
-    if (error) { toast.error('Não consegui apagar o produto.'); return }
+    if (error) { mostrarErro('Não consegui apagar o produto.'); return }
     try { localStorage.removeItem('preco:' + p.nome) } catch { /* sem armazenamento */ }
     await Promise.all([carregarProdutos(), carregar()])
-    toast.success(`${p.nome} apagado`)
+    mostrarSucesso(`${p.nome} apagado`)
   }
 
   function mudarPreco(v) {
