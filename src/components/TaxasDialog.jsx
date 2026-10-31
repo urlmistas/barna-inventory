@@ -46,32 +46,33 @@ export function TaxasDialog({ open, onOpenChange, formas, taxas, onSalvar }) {
         <div>
           <DialogTitle>Pagamento: taxas e acréscimo</DialogTitle>
           <DialogDescription>
-            A taxa é descontada do que você recebe. O acréscimo é somado ao preço de cada lata nessa forma de pagamento.
-            Vale para as vendas novas.
+            Taxa: descontada do que você recebe. Acréscimo: somado ao preço da lata. Vale para as vendas novas.
           </DialogDescription>
         </div>
-        <form onSubmit={enviar} className="grid gap-4">
+        <form onSubmit={enviar} className="grid gap-3">
           {formas.map(({ id, nome, Icone }) =>
             form[id] ? (
               <div key={id} className="grid gap-3 rounded-xl border p-3">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Icone className="size-4 text-muted-foreground" /> {nome}
-                </div>
-                <div className="grid grid-cols-[1fr_auto] items-end gap-3">
-                  <div className="grid gap-2">
-                    <Label htmlFor={`t-${id}`}>Taxa</Label>
-                    <Input id={`t-${id}`} type="text" inputMode="decimal" value={form[id].valor} onChange={(e) => mudar(id, 'valor', e.target.value)} />
-                  </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <Icone className="size-4 text-muted-foreground" /> {nome}
+                  </span>
                   <Tabs value={form[id].tipo} onValueChange={(v) => mudar(id, 'tipo', v)}>
-                    <TabsList className="h-10">
-                      <TabsTrigger value="fixo" className="h-8 px-3">R$</TabsTrigger>
-                      <TabsTrigger value="percentual" className="h-8 px-3">%</TabsTrigger>
+                    <TabsList>
+                      <TabsTrigger value="fixo" className="px-3">R$</TabsTrigger>
+                      <TabsTrigger value="percentual" className="px-3">%</TabsTrigger>
                     </TabsList>
                   </Tabs>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor={`a-${id}`}>Acréscimo no preço (R$ por lata)</Label>
-                  <Input id={`a-${id}`} type="text" inputMode="decimal" value={form[id].acrescimo} onChange={(e) => mudar(id, 'acrescimo', e.target.value)} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor={`t-${id}`} className="text-xs text-muted-foreground">Taxa ({form[id].tipo === 'fixo' ? 'R$' : '%'})</Label>
+                    <Input id={`t-${id}`} type="text" inputMode="decimal" value={form[id].valor} onChange={(e) => mudar(id, 'valor', e.target.value)} />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor={`a-${id}`} className="text-xs text-muted-foreground">Acréscimo (R$/lata)</Label>
+                    <Input id={`a-${id}`} type="text" inputMode="decimal" value={form[id].acrescimo} onChange={(e) => mudar(id, 'acrescimo', e.target.value)} />
+                  </div>
                 </div>
               </div>
             ) : null

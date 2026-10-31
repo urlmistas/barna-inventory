@@ -12,7 +12,7 @@ export function DialogContent({ className, children, ...p }) {
       <D.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
       <D.Content
         className={cn(
-          'fixed z-50 grid gap-4 border bg-popover p-6 shadow-xl outline-none',
+          'fixed z-50 grid max-h-[90dvh] gap-4 overflow-y-auto border bg-popover p-6 shadow-xl outline-none',
           'inset-x-0 bottom-0 rounded-t-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl',
           className
         )}
