@@ -37,7 +37,7 @@ function Saldo({ movs }) {
     return [...movs]
       .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em))
       .map((m) => {
-        const delta = (m.tipo === 'venda' ? 1 : -1) * Number(m.valor)
+        const delta = m.tipo === 'venda' ? Number(m.valor) - Number(m.taxa || 0) : -Number(m.valor)
         saldo += delta
         return {
           hora: hora(m.criado_em),
@@ -88,7 +88,7 @@ function VendasPorDia({ movs, empilhar }) {
       const k = dia(m.criado_em)
       const d = por.get(k) || { dia: k, latas: 0, valor: 0 }
       d.latas += m.qtd
-      d.valor += Number(m.valor)
+      d.valor += Number(m.valor) - Number(m.taxa || 0)
       d[m.produto] = (d[m.produto] || 0) + m.qtd
       por.set(k, d)
     }

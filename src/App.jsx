@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { toast } from 'sonner'
 import {
-  Boxes, CreditCard, PiggyBank, QrCode, ShoppingBag, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
+  Boxes, CreditCard, Percent, PiggyBank, QrCode, ShoppingBag, TriangleAlert, LogOut, Minus, Plus, PackagePlus, ShoppingCart, TrendingDown, TrendingUp, Wallet, X, Loader2, Inbox,
 } from 'lucide-react'
 import { avisarEstoque, supabase } from '@/supabase.js'
 import { brl, cn, quando } from '@/lib/utils'
@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { AnimatedNumber } from '@/components/AnimatedNumber'
 import { AutoHeight } from '@/components/AutoHeight'
 import { ProdutoLinha } from '@/components/ProdutoLinha'
+import { TaxasDialog } from '@/components/TaxasDialog'
 import { GraficoCard } from '@/components/SaldoChart'
 import { Login } from '@/components/Login'
 import { mostrarApagado, mostrarPago } from '@/components/PagoToast'
@@ -42,6 +43,13 @@ const FORMAS = [
   { id: 'credito', nome: 'Crédito', Icone: CreditCard },
 ]
 const nomeForma = (id) => FORMAS.find((f) => f.id === id)?.nome
+
+// valores que você me passou: Pix grátis, débito R$ 0,04 e crédito R$ 0,19 (dá para trocar para % em "Taxas")
+const TAXAS_PADRAO = {
+  pix: { tipo: 'fixo', valor: 0 },
+  debito: { tipo: 'fixo', valor: 0.04 },
+  credito: { tipo: 'fixo', valor: 0.19 },
+}
 
 function lerForma() {
   try {
@@ -78,7 +86,7 @@ function Anel({ pct, children }) {
   )
 }
 
-function Stat({ icon: Icon, rotulo, valor, tom, formato = brl }) {
+function Stat({ icon: Icon, rotulo, valor, tom, formato = brl, sub }) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-2 p-4">
@@ -89,6 +97,7 @@ function Stat({ icon: Icon, rotulo, valor, tom, formato = brl }) {
         <strong className={cn('text-lg font-bold tabular-nums tracking-tight sm:text-xl', tom)}>
           <AnimatedNumber value={valor} format={formato} />
         </strong>
+        {sub && <span className="-mt-1 text-xs text-muted-foreground">{sub}</span>}
       </CardContent>
     </Card>
   )
@@ -105,6 +114,8 @@ function Painel({ sessao }) {
   const [novo, setNovo] = useState({ nome: '', compra: '', venda: '' })
   const [qtd, setQtd] = useState(1)
   const [forma, setForma] = useState(lerForma)
+  const [taxas, setTaxas] = useState(TAXAS_PADRAO)
+  const [taxasAberto, setTaxasAberto] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [filtro, setFiltro] = useState('todos')
   const [compraAberta, setCompraAberta] = useState(false)
@@ -133,7 +144,29 @@ function Painel({ sessao }) {
     })
   }, [])
 
-  useEffect(() => { carregar(); carregarProdutos() }, [carregar, carregarProdutos])
+  const carregarTaxas = useCallback(async () => {
+    const { data, error } = await supabase.from('estoque_taxa').select('*')
+    if (error) return
+    const t = { ...TAXAS_PADRAO }
+    for (const x of data) t[x.forma] = { tipo: x.tipo, valor: Number(x.valor) }
+    setTaxas(t)
+  }, [])
+
+  useEffect(() => { carregar(); carregarProdutos(); carregarTaxas() }, [carregar, carregarProdutos, carregarTaxas])
+
+  const taxaDe = (f, total) => {
+    const t = taxas[f] || TAXAS_PADRAO.pix
+    return Math.round((t.tipo === 'fixo' ? t.valor : (total * t.valor) / 100) * 100) / 100
+  }
+
+  async function salvarTaxas(novo) {
+    const linhas = Object.entries(novo).map(([f, t]) => ({ forma: f, tipo: t.tipo, valor: t.valor }))
+    const { error } = await supabase.from('estoque_taxa').upsert(linhas, { onConflict: 'user_id,forma' })
+    if (error) { toast.error('Não consegui salvar as taxas.'); return false }
+    setTaxas(novo)
+    toast.success('Taxas salvas')
+    return true
+  }
 
   const ativos = useMemo(() => produtos.filter((p) => p.ativo), [produtos])
   const info = produtos.find((p) => p.nome === produto)
@@ -151,9 +184,9 @@ function Painel({ sessao }) {
   const porProduto = useMemo(() => {
     const por = {}
     for (const m of todas) {
-      const d = (por[m.produto] ||= { nome: m.produto, comprado: 0, estoque: 0, vendido: 0, custo: 0, receita: 0 })
+      const d = (por[m.produto] ||= { nome: m.produto, comprado: 0, estoque: 0, vendido: 0, custo: 0, receita: 0, taxas: 0 })
       if (m.tipo === 'compra') { d.comprado += m.qtd; d.estoque += m.qtd; d.custo += Number(m.valor) }
-      else { d.estoque -= m.qtd; d.vendido += m.qtd; d.receita += Number(m.valor) }
+      else { d.estoque -= m.qtd; d.vendido += m.qtd; d.receita += Number(m.valor); d.taxas += Number(m.taxa || 0) }
     }
     return Object.values(por).map((d) => {
       const custoUn = d.comprado ? d.custo / d.comprado : 0
@@ -161,7 +194,7 @@ function Painel({ sessao }) {
         ...d,
         custoUn,
         precoMedio: d.vendido ? d.receita / d.vendido : 0,
-        lucro: d.receita - d.vendido * custoUn,
+        lucro: d.receita - d.taxas - d.vendido * custoUn,
         parado: Math.max(d.estoque, 0) * custoUn,
       }
     })
@@ -171,10 +204,11 @@ function Painel({ sessao }) {
     for (const m of todas) {
       if (m.tipo !== 'venda') continue
       const k = m.forma || 'sem'
-      const d = (por[k] ||= { id: k, vendas: 0, latas: 0, valor: 0 })
+      const d = (por[k] ||= { id: k, vendas: 0, latas: 0, valor: 0, taxas: 0 })
       d.vendas += 1
       d.latas += m.qtd
       d.valor += Number(m.valor)
+      d.taxas += Number(m.taxa || 0)
     }
     return [...FORMAS.map((f) => f.id), 'sem'].filter((k) => por[k]).map((k) => por[k])
   }, [todas])
@@ -193,7 +227,11 @@ function Painel({ sessao }) {
     const vendido = soma('venda', 'qtd')
     const custo = soma('compra', 'valor')
     const receita = soma('venda', 'valor')
-    return { estoque: comprado - vendido, comprado, vendido, custo, receita, saldo: receita - custo }
+    const taxasPagas = soma('venda', 'taxa')
+    return {
+      estoque: comprado - vendido, comprado, vendido, custo, receita,
+      taxas: taxasPagas, liquido: receita - taxasPagas, saldo: receita - taxasPagas - custo,
+    }
   }, [movs])
 
   const pct = r.comprado ? (r.vendido / r.comprado) * 100 : 0
@@ -213,7 +251,7 @@ function Painel({ sessao }) {
   async function vender() {
     const antes = r.estoque
     const depois = antes - qtdOk
-    if (await registrar('venda', qtdOk, total, { forma })) {
+    if (await registrar('venda', qtdOk, total, { forma, taxa: taxaDe(forma, total) })) {
       // avisa uma vez: quando passa a ficar baixo ou quando acaba
       if ((depois <= ESTOQUE_BAIXO && antes > ESTOQUE_BAIXO) || depois === 0) avisarEstoque(produto, depois)
       mostrarPago('Venda registrada', `${produto} · ${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)} · ${nomeForma(forma)}`)
@@ -242,8 +280,8 @@ function Painel({ sessao }) {
       {
         label: 'Restaurar',
         onClick: async () => {
-          const { id, user_id, criado_em, produto, tipo, qtd: q, valor, forma } = m
-          await supabase.from('estoque_mov').insert({ id, user_id, criado_em, produto, tipo, qtd: q, valor, forma })
+          const { id, user_id, criado_em, produto, tipo, qtd: q, valor, forma, taxa } = m
+          await supabase.from('estoque_mov').insert({ id, user_id, criado_em, produto, tipo, qtd: q, valor, forma, taxa })
           carregar()
         },
       }
@@ -337,9 +375,19 @@ function Painel({ sessao }) {
             <p className="text-xs text-muted-foreground">{geral ? 'Todos os produtos' : produto}</p>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} title={sessao.user.email}>
-          <LogOut /> Sair
-        </Button>
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Taxas de pagamento" onClick={() => setTaxasAberto(true)}>
+                <Percent />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Taxas de pagamento</TooltipContent>
+          </Tooltip>
+          <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} title={sessao.user.email}>
+            <LogOut /> Sair
+          </Button>
+        </div>
       </header>
 
       <div className="flex items-center gap-2">
@@ -386,7 +434,7 @@ function Painel({ sessao }) {
 
       {geral ? (
         <div className="grid grid-cols-2 gap-3">
-          <Stat icon={TrendingUp} rotulo="Recebi" valor={r.receita} tom="text-success" />
+          <Stat icon={TrendingUp} rotulo="Recebi" valor={r.liquido} tom="text-success" sub={r.taxas > 0 ? `taxas ${brl(r.taxas)}` : undefined} />
           <Stat icon={TrendingDown} rotulo="Gastei" valor={r.custo} />
           <Stat icon={Wallet} rotulo="Saldo" valor={r.saldo} tom={r.saldo >= 0 ? 'text-success' : 'text-destructive'} />
           <Stat icon={PiggyBank} rotulo="Lucro das vendas" valor={ger.lucro} tom={ger.lucro >= 0 ? 'text-success' : 'text-destructive'} />
@@ -396,7 +444,7 @@ function Painel({ sessao }) {
       ) : (
         <div className="grid grid-cols-3 gap-3">
           <Stat icon={TrendingDown} rotulo="Gastei" valor={r.custo} />
-          <Stat icon={TrendingUp} rotulo="Recebi" valor={r.receita} tom="text-success" />
+          <Stat icon={TrendingUp} rotulo="Recebi" valor={r.liquido} tom="text-success" sub={r.taxas > 0 ? `taxas ${brl(r.taxas)}` : undefined} />
           <Stat icon={Wallet} rotulo="Saldo" valor={r.saldo} tom={r.saldo >= 0 ? 'text-success' : 'text-destructive'} />
         </div>
       )}
@@ -506,7 +554,10 @@ function Painel({ sessao }) {
                       <p className="text-sm font-semibold">{f ? f.nome : 'Sem registro'}</p>
                       <p className="text-xs text-muted-foreground">{d.vendas} {d.vendas === 1 ? 'venda' : 'vendas'} · {d.latas} {d.latas === 1 ? 'lata' : 'latas'}</p>
                     </div>
-                    <span className="text-sm font-bold tabular-nums">{brl(d.valor)}</span>
+                    <span className="text-right text-sm font-bold tabular-nums">
+                      {brl(d.valor)}
+                      {d.taxas > 0 && <span className="block text-xs font-normal text-muted-foreground">taxas {brl(d.taxas)}</span>}
+                    </span>
                   </li>
                 )
               })}
@@ -550,7 +601,7 @@ function Painel({ sessao }) {
                       <p className="text-sm font-semibold">
                         {m.tipo === 'venda' ? 'Venda' : 'Compra'}{geral && ` · ${m.produto}`} · {m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}
                       </p>
-                      <p className="text-xs text-muted-foreground">{quando(m.criado_em)}{m.forma && ` · ${nomeForma(m.forma)}`}</p>
+                      <p className="text-xs text-muted-foreground">{quando(m.criado_em)}{m.forma && ` · ${nomeForma(m.forma)}`}{Number(m.taxa) > 0 && ` · taxa ${brl(m.taxa)}`}</p>
                     </div>
                     <span className={cn('text-sm font-bold tabular-nums', m.tipo === 'venda' ? 'text-success' : 'text-foreground')}>
                       {m.tipo === 'venda' ? '+' : '−'}{brl(m.valor)}
@@ -567,6 +618,8 @@ function Painel({ sessao }) {
       </Card>
       </div>
       </div>
+
+      <TaxasDialog open={taxasAberto} onOpenChange={setTaxasAberto} formas={FORMAS} taxas={taxas} onSalvar={salvarTaxas} />
 
       <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
         <DialogContent>

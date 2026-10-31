@@ -37,7 +37,7 @@ export function TabsTrigger({ className, children, value, ...p }) {
           transition={{ type: 'spring', stiffness: 500, damping: 36 }}
         />
       )}
-      <span className="relative z-10">{children}</span>
+      <span className="relative z-10 inline-flex items-center justify-center gap-1.5">{children}</span>
     </T.Trigger>
   )
 }
