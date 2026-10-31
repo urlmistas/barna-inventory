@@ -110,7 +110,7 @@ function Painel({ sessao }) {
   const [preco, setPreco] = useState('')
   const [novoAberto, setNovoAberto] = useState(false)
   const [abaProdutos, setAbaProdutos] = useState('novo')
-  const [novo, setNovo] = useState({ nome: '', compra: '', venda: '' })
+  const [novo, setNovo] = useState({ nome: '', apelido: '', compra: '', venda: '' })
   const [qtd, setQtd] = useState(1)
   const [forma, setForma] = useState(lerForma)
   const [taxas, setTaxas] = useState(TAXAS_PADRAO)
@@ -171,6 +171,8 @@ function Painel({ sessao }) {
 
   const ativos = useMemo(() => produtos.filter((p) => p.ativo), [produtos])
   const info = produtos.find((p) => p.nome === produto)
+  const apelidos = useMemo(() => Object.fromEntries(produtos.filter((p) => p.apelido).map((p) => [p.nome, p.apelido])), [produtos])
+  const rot = (nome) => apelidos[nome] || nome
   const geral = produto === GERAL
   const { estoques, comprados } = useMemo(() => {
     const e = {}
@@ -257,7 +259,7 @@ function Painel({ sessao }) {
     if (await registrar('venda', qtdOk, total, { forma, taxa: taxaDe(forma, total) })) {
       // avisa uma vez: quando passa a ficar baixo ou quando acaba
       if ((depois <= ESTOQUE_BAIXO && antes > ESTOQUE_BAIXO) || depois === 0) avisarEstoque(produto, depois)
-      mostrarPago('Venda registrada', `${produto} · ${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)} · ${nomeForma(forma)}`)
+      mostrarPago('Venda registrada', `${rot(produto)} · ${qtdOk} ${qtdOk === 1 ? 'lata' : 'latas'} · ${brl(total)} · ${nomeForma(forma)}`)
       setQtd(1)
     }
   }
@@ -268,7 +270,7 @@ function Painel({ sessao }) {
     const valor = parseFloat(String(compra.total).replace(',', '.'))
     if (!(n > 0) || !(valor >= 0)) return
     if (await registrar('compra', n, valor)) {
-      mostrarSucesso('Compra registrada', `${produto} · +${n} ${n === 1 ? 'lata' : 'latas'}`)
+      mostrarSucesso('Compra registrada', `${rot(produto)} · +${n} ${n === 1 ? 'lata' : 'latas'}`)
       setCompraAberta(false)
     }
   }
@@ -279,7 +281,7 @@ function Painel({ sessao }) {
     await carregar()
     mostrarApagado(
       m.tipo === 'venda' ? 'Venda desfeita' : 'Compra desfeita',
-      `${m.produto} · ${m.qtd} ${m.qtd === 1 ? 'lata' : 'latas'} · ${brl(m.valor)}`,
+      `${rot(m.produto)} · ${m.qtd} ${m.qtd === 1 ? 'lata' : 'latas'} · ${brl(m.valor)}`,
       {
         label: 'Restaurar',
         onClick: async () => {
@@ -302,7 +304,7 @@ function Painel({ sessao }) {
     const nome = novo.nome.trim()
     if (!nome) return
     const num = (v) => (String(v).trim() === '' ? null : parseFloat(String(v).replace(',', '.')))
-    const { error } = await supabase.from('estoque_produto').insert({ nome, preco_compra: num(novo.compra), preco_venda: num(novo.venda) })
+    const { error } = await supabase.from('estoque_produto').insert({ nome, apelido: novo.apelido.trim() || null, preco_compra: num(novo.compra), preco_venda: num(novo.venda) })
     if (error) {
       if (error.code === '23505') mostrarErro('Esse produto já existe', 'Se estiver arquivado, reative em Gerenciar')
       else mostrarErro('Não consegui adicionar o produto')
@@ -310,7 +312,7 @@ function Painel({ sessao }) {
     }
     await carregarProdutos()
     trocarProduto(nome)
-    setNovo({ nome: '', compra: '', venda: '' })
+    setNovo({ nome: '', apelido: '', compra: '', venda: '' })
     setNovoAberto(false)
     mostrarSucesso(`${nome} adicionado`)
   }
@@ -327,7 +329,7 @@ function Painel({ sessao }) {
     const nome = f.nome.trim()
     if (!nome) return false
     const num = (v) => (String(v).trim() === '' ? null : parseFloat(String(v).replace(',', '.')))
-    const { error } = await supabase.from('estoque_produto').update({ preco_compra: num(f.compra), preco_venda: num(f.venda) }).eq('id', p.id)
+    const { error } = await supabase.from('estoque_produto').update({ apelido: f.apelido.trim() || null, preco_compra: num(f.compra), preco_venda: num(f.venda) }).eq('id', p.id)
     if (error) { mostrarErro('Não consegui salvar os valores.'); return false }
     if (nome !== p.nome) {
       const { error: e2 } = await supabase.rpc('estoque_renomear', { antigo: p.nome, novo: nome })
@@ -401,7 +403,7 @@ function Painel({ sessao }) {
             <TabsTrigger value={GERAL} className="h-9 px-5 text-sm">Geral</TabsTrigger>
             {ativos.map((p) => (
               <TabsTrigger key={p.id} value={p.nome} className="h-9 px-5 text-sm">
-                {p.nome}
+                {rot(p.nome)}
                 {baixo(p.nome) && <span className="ml-2 size-1.5 rounded-full bg-destructive" title="Estoque baixo" />}
               </TabsTrigger>
             ))}
@@ -505,7 +507,7 @@ function Painel({ sessao }) {
       )}
       </div>
       <div className="flex flex-col gap-5 lg:col-span-7">
-      <GraficoCard movs={movs} geral={geral} />
+      <GraficoCard movs={movs} geral={geral} rotulo={rot} />
 
       {geral && (
         <Card>
@@ -609,7 +611,7 @@ function Painel({ sessao }) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold">
-                        {m.tipo === 'venda' ? 'Venda' : 'Compra'}{geral && ` · ${m.produto}`} · {m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}
+                        {m.tipo === 'venda' ? 'Venda' : 'Compra'}{geral && ` · ${rot(m.produto)}`} · {m.qtd} {m.qtd === 1 ? 'lata' : 'latas'}
                       </p>
                       <p className="text-xs text-muted-foreground">{quando(m.criado_em)}{m.forma && ` · ${nomeForma(m.forma)}`}{Number(m.taxa) > 0 && ` · taxa ${brl(m.taxa)}`}</p>
                     </div>
@@ -655,6 +657,10 @@ function Painel({ sessao }) {
                 <div className="grid gap-2">
                   <Label htmlFor="n-nome">Nome do produto</Label>
                   <Input id="n-nome" maxLength={40} placeholder="Ex.: Guaraná" value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} required autoFocus />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="n-apelido">Nome curto (aparece nas abas)</Label>
+                  <Input id="n-apelido" maxLength={20} placeholder="Opcional. Ex.: Coca" value={novo.apelido} onChange={(e) => setNovo({ ...novo, apelido: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-2">

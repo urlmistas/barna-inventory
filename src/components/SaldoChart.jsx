@@ -78,7 +78,7 @@ function Saldo({ movs }) {
   )
 }
 
-function VendasPorDia({ movs, empilhar }) {
+function VendasPorDia({ movs, empilhar, rotulo }) {
   const { dados, nomes } = useMemo(() => {
     const por = new Map()
     const nomes = []
@@ -98,7 +98,7 @@ function VendasPorDia({ movs, empilhar }) {
   if (dados.length === 0) return <Vazio texto="Ainda não há vendas." />
 
   const linhas = empilhar
-    ? (d) => [...nomes.filter((n) => d[n]).map((n) => [n, String(d[n])]), ['Total', String(d.latas)], ['Recebido', brl(d.valor)]]
+    ? (d) => [...nomes.filter((n) => d[n]).map((n) => [rotulo(n), String(d[n])]), ['Total', String(d.latas)], ['Recebido', brl(d.valor)]]
     : (d) => [['Latas', String(d.latas)], ['Recebido', brl(d.valor)]]
 
   return (
@@ -110,7 +110,7 @@ function VendasPorDia({ movs, empilhar }) {
         <Tooltip cursor={{ fill: 'var(--accent)', opacity: 0.5 }} content={<Dica linhas={linhas} />} />
         {empilhar ? (
           <>
-            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} formatter={(v) => rotulo(v)} />
             {nomes.map((n, i) => (
               <Bar key={n} dataKey={n} stackId="v" fill={CORES[i % CORES.length]} maxBarSize={56}
                 radius={i === nomes.length - 1 ? [8, 8, 0, 0] : 0} />
@@ -128,7 +128,7 @@ const Vazio = ({ texto }) => (
   <p className="grid h-full place-items-center text-center text-sm text-muted-foreground">{texto}</p>
 )
 
-export function GraficoCard({ movs, geral = false }) {
+export function GraficoCard({ movs, geral = false, rotulo = (n) => n }) {
   const [aba, setAba] = useState('saldo')
   return (
     <Card>
@@ -154,7 +154,7 @@ export function GraficoCard({ movs, geral = false }) {
               initial={{ opacity: 0, x: aba === 'saldo' ? -16 : 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
             >
-              {aba === 'saldo' ? <Saldo movs={movs} /> : <VendasPorDia movs={movs} empilhar={geral} />}
+              {aba === 'saldo' ? <Saldo movs={movs} /> : <VendasPorDia movs={movs} empilhar={geral} rotulo={rotulo} />}
             </motion.div>
           </AnimatePresence>
         </div>

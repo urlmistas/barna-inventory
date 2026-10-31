@@ -22,7 +22,7 @@ const numero = (v) => (v == null ? '' : String(v))
 // uma linha da aba "Gerenciar": ver, editar ou confirmar a exclusão
 export function ProdutoLinha({ p, estoque, lancamentos, ultimoAtivo, unico, onSalvar, onAlternar, onApagar }) {
   const [modo, setModo] = useState('ver')
-  const [f, setF] = useState({ nome: p.nome, compra: numero(p.preco_compra), venda: numero(p.preco_venda) })
+  const [f, setF] = useState({ nome: p.nome, apelido: p.apelido ?? '', compra: numero(p.preco_compra), venda: numero(p.preco_venda) })
   const [ocupado, setOcupado] = useState(false)
 
   async function salvar(e) {
@@ -46,6 +46,10 @@ export function ProdutoLinha({ p, estoque, lancamentos, ultimoAtivo, unico, onSa
           <div className="grid gap-2">
             <Label htmlFor={`e-nome-${p.id}`}>Nome</Label>
             <Input id={`e-nome-${p.id}`} maxLength={40} value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} required autoFocus />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`e-apelido-${p.id}`}>Nome curto (aparece nas abas)</Label>
+            <Input id={`e-apelido-${p.id}`} maxLength={20} placeholder="Opcional" value={f.apelido} onChange={(e) => setF({ ...f, apelido: e.target.value })} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
@@ -85,7 +89,7 @@ export function ProdutoLinha({ p, estoque, lancamentos, ultimoAtivo, unico, onSa
       <div className="min-w-0 flex-1">
         <p className={cn('truncate text-sm font-semibold', !p.ativo && 'text-muted-foreground line-through')}>{p.nome}</p>
         <p className="text-xs text-muted-foreground">
-          {estoque} {estoque === 1 ? 'lata' : 'latas'} em estoque
+          {p.apelido && `Aba: ${p.apelido} · `}{estoque} {estoque === 1 ? 'lata' : 'latas'} em estoque
           {p.preco_venda != null && ` · venda ${brl(p.preco_venda)}`}
         </p>
       </div>
